@@ -1,0 +1,30 @@
+# Maven
+target/
+*.class
+
+# IDE
+.idea/
+*.iml
+.vscode/
+*.project
+*.classpath
+.settings/
+
+# Logs
+*.log
+logs/
+
+# Certificados e dados sensíveis
+*.pfx
+*.p12
+*.jks
+src/main/resources/database.properties
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Instalador gerado
+installer/
+*.exe
+*.msi
