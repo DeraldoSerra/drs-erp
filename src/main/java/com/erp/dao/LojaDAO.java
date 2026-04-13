@@ -110,6 +110,18 @@ public class LojaDAO {
         }
     }
 
+    public boolean excluir(int id) {
+        String sql = "DELETE FROM lojas WHERE id = ?";
+        try (Connection conn = DatabaseConfig.getConexao();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, id);
+            return ps.executeUpdate() > 0;
+        } catch (SQLException e) {
+            log.error("Erro ao excluir loja", e);
+            return false;
+        }
+    }
+
     public boolean bloquear(int id, String motivo) {
         String sql = "UPDATE lojas SET bloqueada=TRUE, motivo_bloqueio=?, bloqueada_em=NOW() WHERE id=?";
         try (Connection conn = DatabaseConfig.getConexao();

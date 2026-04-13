@@ -14,6 +14,63 @@ public class EmpresaDAO {
 
     private String nvl(String v) { return v == null ? "" : v; }
 
+    /** Carrega empresa de qualquer loja (uso admin, sem sessão) */
+    public Optional<Empresa> carregarParaLoja(int lojaId) {
+        String sql = "SELECT * FROM empresa WHERE loja_id = ? LIMIT 1";
+        try (Connection conn = DatabaseConfig.getConexao();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, lojaId);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) return Optional.of(mapear(rs));
+            }
+        } catch (SQLException e) {
+            log.error("Erro ao carregar empresa para loja {}", lojaId, e);
+        }
+        return Optional.empty();
+    }
+
+    /** Salva empresa de qualquer loja (uso admin, sem sessão) */
+    public boolean salvarParaLoja(Empresa e, int lojaId) {
+        String sql = """
+            INSERT INTO empresa (razao_social, nome_fantasia, cnpj, ie, im,
+                regime_tributario, email, telefone, celular, site,
+                cep, logradouro, numero, complemento, bairro, cidade, estado,
+                logo_path, observacoes, loja_id)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            ON CONFLICT (loja_id) DO UPDATE SET
+                razao_social=EXCLUDED.razao_social,
+                nome_fantasia=EXCLUDED.nome_fantasia,
+                cnpj=EXCLUDED.cnpj,
+                ie=EXCLUDED.ie,
+                im=EXCLUDED.im,
+                regime_tributario=EXCLUDED.regime_tributario,
+                email=EXCLUDED.email,
+                telefone=EXCLUDED.telefone,
+                celular=EXCLUDED.celular,
+                site=EXCLUDED.site,
+                cep=EXCLUDED.cep,
+                logradouro=EXCLUDED.logradouro,
+                numero=EXCLUDED.numero,
+                complemento=EXCLUDED.complemento,
+                bairro=EXCLUDED.bairro,
+                cidade=EXCLUDED.cidade,
+                estado=EXCLUDED.estado,
+                logo_path=EXCLUDED.logo_path,
+                observacoes=EXCLUDED.observacoes,
+                atualizado_em=NOW()
+            """;
+        try (Connection conn = DatabaseConfig.getConexao();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            preencherPs(ps, e);
+            ps.setInt(20, lojaId);
+            ps.executeUpdate();
+            return true;
+        } catch (SQLException ex) {
+            log.error("Erro ao salvar empresa para loja {}", lojaId, ex);
+            return false;
+        }
+    }
+
     /** Carrega a empresa cadastrada para a loja da sessão */
     public Optional<Empresa> carregar() {
         int lojaId = com.erp.util.Sessao.getInstance().getLojaId();
