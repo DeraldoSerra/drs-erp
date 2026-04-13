@@ -12,6 +12,36 @@ public class TokenLojaDAO {
 
     private static final Logger log = LoggerFactory.getLogger(TokenLojaDAO.class);
 
+    /** Verifica se é um token ilimitado (usado para acesso ao painel admin). */
+    public boolean tokenMasterValido(String token) {
+        String sql = "SELECT id FROM tokens_loja WHERE token = ? AND ilimitado = TRUE";
+        try (Connection conn = DatabaseConfig.getConexao();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, token.toUpperCase().trim());
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next();
+            }
+        } catch (SQLException e) {
+            log.error("Erro ao validar token master", e);
+            return false;
+        }
+    }
+
+    /** Verifica se o token é válido E tem permissão de admin. */
+    public boolean tokenAdmin(String token) {
+        String sql = "SELECT id FROM tokens_loja WHERE token = ? AND admin = TRUE AND (usado = FALSE OR ilimitado = TRUE)";
+        try (Connection conn = DatabaseConfig.getConexao();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, token.toUpperCase().trim());
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next();
+            }
+        } catch (SQLException e) {
+            log.error("Erro ao validar token admin", e);
+            return false;
+        }
+    }
+
     /** Verifica se o token existe e ainda é válido (não usado OU ilimitado). */
     public boolean tokenValido(String token) {
         String sql = "SELECT id FROM tokens_loja WHERE token = ? AND (usado = FALSE OR ilimitado = TRUE)";

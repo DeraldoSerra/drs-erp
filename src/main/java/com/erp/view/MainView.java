@@ -127,12 +127,6 @@ public class MainView {
         btnAtualizacao.setMaxWidth(Double.MAX_VALUE);
         btnAtualizacao.setOnAction(e -> AtualizacaoView.verificar(false));
 
-        Button btnAdminPainel = new Button("🛡️  Painel Admin");
-        btnAdminPainel.getStyleClass().add("sidebar-item");
-        btnAdminPainel.setStyle("-fx-text-fill: #ffd43b; -fx-font-weight: bold;");
-        btnAdminPainel.setMaxWidth(Double.MAX_VALUE);
-        btnAdminPainel.setOnAction(e -> { navegar(new AdminPainelView().criar(), btnAdminPainel); });
-
         sidebar.getChildren().addAll(
                 logo, versaoSidebar, usuario, sep,
                 secPrincipal, btnDashboard, btnVendas, btnOrcamentos,
@@ -140,7 +134,7 @@ public class MainView {
                 secGestao, btnEstoque, btnFinanceiro, btnRH, btnCaixa,
                 secRelLabel, btnRelatorios, btnRelFiscal,
                 secConfig, btnEmpresa, btnConfigNFe, btnNotasFiscais, btnLojas,
-                spacer, btnAdminPainel, btnAtualizacao, btnSair
+                spacer, btnAtualizacao, btnSair
         );
 
         ativarBotao(btnDashboard);

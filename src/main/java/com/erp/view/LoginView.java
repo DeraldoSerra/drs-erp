@@ -350,9 +350,84 @@ public class LoginView {
 
         container.getChildren().addAll(titulo, versaoLabel, subtitulo, dbPane, lojasBox, btnContinuar, btnCadastrar);
 
-        root.getChildren().setAll(container);
+        // Botão admin discreto no canto inferior direito
+        Button btnAdmin = new Button("🛡️");
+        btnAdmin.setTooltip(new Tooltip("Acesso Administrativo"));
+        btnAdmin.setStyle("-fx-background-color: transparent; -fx-text-fill: #3a3d4e; -fx-font-size: 20px; -fx-cursor: hand;");
+        btnAdmin.setOnMouseEntered(e -> btnAdmin.setStyle("-fx-background-color: transparent; -fx-text-fill: #4dabf7; -fx-font-size: 20px; -fx-cursor: hand;"));
+        btnAdmin.setOnMouseExited(e -> btnAdmin.setStyle("-fx-background-color: transparent; -fx-text-fill: #3a3d4e; -fx-font-size: 20px; -fx-cursor: hand;"));
+        btnAdmin.setOnAction(e -> abrirPainelAdmin());
+        StackPane.setAlignment(btnAdmin, javafx.geometry.Pos.BOTTOM_RIGHT);
+        StackPane.setMargin(btnAdmin, new Insets(0, 16, 16, 0));
+
+        root.getChildren().setAll(container, btnAdmin);
         StackPane.setAlignment(container, Pos.CENTER);
         animar(container);
+    }
+
+    private void abrirPainelAdmin() {
+        Dialog<ButtonType> dlg = new Dialog<>();
+        dlg.setTitle("Acesso Administrativo");
+        dlg.setHeaderText(null);
+        dlg.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
+        dlg.getDialogPane().getStylesheets().add(getClass().getResource("/css/style.css").toExternalForm());
+
+        VBox box = new VBox(14);
+        box.setPadding(new Insets(20));
+        box.setAlignment(Pos.CENTER_LEFT);
+        box.setPrefWidth(340);
+
+        Label icone = new Label("🛡️");
+        icone.setStyle("-fx-font-size: 36px;");
+        Label titulo = new Label("Painel Administrativo DRS");
+        titulo.setStyle("-fx-font-size: 16px; -fx-font-weight: bold; -fx-text-fill: #4dabf7;");
+        Label sub = new Label("Insira a chave de acesso para continuar:");
+        sub.setStyle("-fx-text-fill: #adb5bd; -fx-font-size: 12px;");
+
+        PasswordField txtChave = new PasswordField();
+        txtChave.setPromptText("Chave de acesso...");
+        txtChave.setPrefWidth(280);
+        txtChave.setStyle("-fx-font-family: monospace;");
+
+        // Permite confirmar com Enter
+        txtChave.setOnAction(ev -> dlg.getDialogPane().lookupButton(ButtonType.OK).fireEvent(new javafx.event.ActionEvent()));
+
+        box.getChildren().addAll(icone, titulo, sub, txtChave);
+        dlg.getDialogPane().setContent(box);
+
+        // Foca no campo ao abrir
+        javafx.application.Platform.runLater(txtChave::requestFocus);
+
+        dlg.showAndWait().ifPresent(btn -> {
+            if (btn == ButtonType.OK) {
+                String chave = txtChave.getText().trim();
+                // Valida o token ilimitado (DRS-MASTER-2026) ou qualquer token ilimitado no banco
+                if (new com.erp.dao.TokenLojaDAO().tokenAdmin(chave)) {
+                    mostrarPainelAdmin();
+                } else {
+                    Alerta.erro("Acesso Negado", "Chave de acesso inválida.");
+                }
+            }
+        });
+    }
+
+    private void mostrarPainelAdmin() {
+        VBox adminContent = new AdminPainelView().criar();
+
+        Button btnVoltar = new Button("← Voltar");
+        btnVoltar.getStyleClass().add("btn-secundario");
+        btnVoltar.setOnAction(e -> mostrarSelecaoLoja());
+
+        VBox wrapper = new VBox(0);
+        HBox topBar = new HBox(btnVoltar);
+        topBar.setPadding(new Insets(10, 16, 0, 16));
+        topBar.setStyle("-fx-background-color: #1a1c2a;");
+        VBox.setVgrow(adminContent, Priority.ALWAYS);
+        wrapper.getChildren().addAll(topBar, adminContent);
+        wrapper.setStyle("-fx-background-color: #1a1c2a;");
+
+        root.getChildren().setAll(wrapper);
+        animar(wrapper);
     }
 
     // =========================================================
