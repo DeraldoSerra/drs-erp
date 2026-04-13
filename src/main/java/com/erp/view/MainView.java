@@ -80,6 +80,11 @@ public class MainView {
         Button btnRelFiscal    = menuBtn("📊  Relatórios Fiscais");
         Button btnLojas        = menuBtn("🏪  Lojas");
 
+        // Verificar perfil do usuário logado
+        com.erp.model.Usuario usuarioLogado = Sessao.getInstance().getUsuario();
+        boolean isAdmin    = usuarioLogado != null && "ADMIN".equals(usuarioLogado.getPerfil());
+        boolean isGerente  = usuarioLogado != null && (isAdmin || "GERENTE".equals(usuarioLogado.getPerfil()));
+
         // Configurar ações depois (botões já existem, sem problema de inicialização)
         btnDashboard   .setOnAction(e -> navegar(new DashboardView().criar(),       btnDashboard));
         btnVendas      .setOnAction(e -> navegar(new VendaView().criar(),           btnVendas));
@@ -103,6 +108,21 @@ public class MainView {
         Label secGestao     = secLabel("GESTÃO");
         Label secRelLabel   = secLabel("RELATÓRIOS");
         Label secConfig     = secLabel("CONFIGURAÇÕES");
+
+        // === Restrições de perfil ===
+        // SOMENTE ADMIN: Lojas, Empresa, Config NF-e, NF-e, Funcionários
+        btnLojas       .setVisible(isAdmin); btnLojas       .setManaged(isAdmin);
+        btnEmpresa     .setVisible(isAdmin); btnEmpresa     .setManaged(isAdmin);
+        btnConfigNFe   .setVisible(isAdmin); btnConfigNFe   .setManaged(isAdmin);
+        btnNotasFiscais.setVisible(isAdmin); btnNotasFiscais.setManaged(isAdmin);
+        btnRH          .setVisible(isAdmin); btnRH          .setManaged(isAdmin);
+
+        // GERENTE ou ADMIN: Financeiro, Relatórios Fiscais
+        btnFinanceiro  .setVisible(isGerente); btnFinanceiro  .setManaged(isGerente);
+        btnRelFiscal   .setVisible(isGerente); btnRelFiscal   .setManaged(isGerente);
+
+        // Seção CONFIGURAÇÕES só aparece para admins
+        secConfig.setVisible(isAdmin); secConfig.setManaged(isAdmin);
 
         Region spacer = new Region();
         VBox.setVgrow(spacer, Priority.ALWAYS);
