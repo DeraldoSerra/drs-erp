@@ -38,15 +38,17 @@ public class ProdutoDAO {
     }
 
     public boolean atualizar(Produto p) {
+        int lojaId = com.erp.util.Sessao.getInstance().getLojaId();
         String sql = """
             UPDATE produtos SET codigo=?, codigo_barras=?, nome=?, descricao=?, categoria_id=?, fornecedor_id=?,
             unidade=?, preco_custo=?, preco_venda=?, margem_lucro=?, estoque_atual=?, estoque_minimo=?,
-            estoque_maximo=?, ncm=?, cfop=?, icms_aliquota=?, ativo=?, atualizado_em=NOW() WHERE id=?
+            estoque_maximo=?, ncm=?, cfop=?, icms_aliquota=?, ativo=?, atualizado_em=NOW() WHERE id=? AND loja_id=?
             """;
         try (Connection conn = DatabaseConfig.getConexao();
              PreparedStatement ps = conn.prepareStatement(sql)) {
             preencherPS(ps, p);
             ps.setInt(18, p.getId());
+            ps.setInt(19, lojaId);
             return ps.executeUpdate() > 0;
         } catch (SQLException e) {
             log.error("Erro ao atualizar produto", e);
@@ -55,10 +57,12 @@ public class ProdutoDAO {
     }
 
     public boolean excluir(int id) {
-        String sql = "UPDATE produtos SET ativo = FALSE WHERE id = ?";
+        int lojaId = com.erp.util.Sessao.getInstance().getLojaId();
+        String sql = "UPDATE produtos SET ativo = FALSE WHERE id = ? AND loja_id = ?";
         try (Connection conn = DatabaseConfig.getConexao();
              PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setInt(1, id);
+            ps.setInt(2, lojaId);
             return ps.executeUpdate() > 0;
         } catch (SQLException e) {
             log.error("Erro ao excluir produto", e);

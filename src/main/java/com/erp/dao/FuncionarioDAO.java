@@ -54,10 +54,12 @@ public class FuncionarioDAO {
     }
 
     public boolean excluir(int id) {
-        String sql = "UPDATE funcionarios SET ativo=FALSE WHERE id=?";
+        int lojaId = com.erp.util.Sessao.getInstance().getLojaId();
+        String sql = "UPDATE funcionarios SET ativo=FALSE WHERE id=? AND loja_id=?";
         try (Connection conn = DatabaseConfig.getConexao();
              PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setInt(1, id);
+            ps.setInt(2, lojaId);
             return ps.executeUpdate() > 0;
         } catch (SQLException e) {
             log.error("Erro ao excluir funcionário", e);
@@ -72,8 +74,8 @@ public class FuncionarioDAO {
     public List<Funcionario> listarPorFiltro(String filtro, boolean apenasAtivos) {
         int lojaId = com.erp.util.Sessao.getInstance().getLojaId();
         List<Funcionario> lista = new ArrayList<>();
-        String where = apenasAtivos ? "WHERE f.ativo=TRUE AND f.loja_id=" + lojaId
-                                    : "WHERE f.loja_id=" + lojaId;
+        String where = apenasAtivos ? "WHERE f.ativo=TRUE AND f.loja_id=?"
+                                    : "WHERE f.loja_id=?";
         if (filtro != null && !filtro.isBlank()) {
             where += " AND (unaccent(f.nome) ILIKE unaccent(?) OR f.cpf LIKE ?)";
         }
@@ -83,9 +85,10 @@ public class FuncionarioDAO {
             """ + where + " ORDER BY f.nome LIMIT 500";
         try (Connection conn = DatabaseConfig.getConexao();
              PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, lojaId);
             if (filtro != null && !filtro.isBlank()) {
-                ps.setString(1, "%" + filtro + "%");
                 ps.setString(2, "%" + filtro + "%");
+                ps.setString(3, "%" + filtro + "%");
             }
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) lista.add(mapear(rs));
@@ -97,10 +100,12 @@ public class FuncionarioDAO {
     }
 
     public Optional<Funcionario> buscarPorId(int id) {
-        String sql = "SELECT f.*, c.nome AS cargo_nome FROM funcionarios f LEFT JOIN cargos c ON c.id=f.cargo_id WHERE f.id=?";
+        int lojaId = com.erp.util.Sessao.getInstance().getLojaId();
+        String sql = "SELECT f.*, c.nome AS cargo_nome FROM funcionarios f LEFT JOIN cargos c ON c.id=f.cargo_id WHERE f.id=? AND f.loja_id=?";
         try (Connection conn = DatabaseConfig.getConexao();
              PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setInt(1, id);
+            ps.setInt(2, lojaId);
             try (ResultSet rs = ps.executeQuery()) {
                 if (rs.next()) return Optional.of(mapear(rs));
             }

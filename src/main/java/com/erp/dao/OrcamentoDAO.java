@@ -91,16 +91,18 @@ public class OrcamentoDAO {
     }
 
     public Optional<Orcamento> buscarPorId(int id) {
+        int lojaId = com.erp.util.Sessao.getInstance().getLojaId();
         String sql = """
             SELECT o.*, c.nome AS cliente_nome, u.nome AS usuario_nome
             FROM orcamentos o
             LEFT JOIN clientes c ON c.id = o.cliente_id
             LEFT JOIN usuarios u ON u.id = o.usuario_id
-            WHERE o.id = ?
+            WHERE o.id = ? AND o.loja_id = ?
             """;
         try (Connection conn = DatabaseConfig.getConexao();
              PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setInt(1, id);
+            ps.setInt(2, lojaId);
             try (ResultSet rs = ps.executeQuery()) {
                 if (rs.next()) {
                     Orcamento o = mapear(rs);
@@ -113,10 +115,12 @@ public class OrcamentoDAO {
     }
 
     public boolean cancelar(int orcamentoId) {
-        String sql = "UPDATE orcamentos SET status='CANCELADO' WHERE id=? AND status='ABERTO'";
+        int lojaId = com.erp.util.Sessao.getInstance().getLojaId();
+        String sql = "UPDATE orcamentos SET status='CANCELADO' WHERE id=? AND status='ABERTO' AND loja_id=?";
         try (Connection conn = DatabaseConfig.getConexao();
              PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setInt(1, orcamentoId);
+            ps.setInt(2, lojaId);
             return ps.executeUpdate() > 0;
         } catch (SQLException e) {
             log.error("Erro ao cancelar orçamento", e);
@@ -154,10 +158,12 @@ public class OrcamentoDAO {
         VendaDAO vendaDAO = new VendaDAO();
         boolean saved = vendaDAO.salvar(venda);
         if (saved) {
-            String sql = "UPDATE orcamentos SET status='APROVADO' WHERE id=?";
+            int lojaId = com.erp.util.Sessao.getInstance().getLojaId();
+            String sql = "UPDATE orcamentos SET status='APROVADO' WHERE id=? AND loja_id=?";
             try (Connection conn = DatabaseConfig.getConexao();
                  PreparedStatement ps = conn.prepareStatement(sql)) {
                 ps.setInt(1, orcamentoId);
+                ps.setInt(2, lojaId);
                 ps.executeUpdate();
             } catch (SQLException e) { log.error("Erro ao atualizar status orçamento", e); }
         }

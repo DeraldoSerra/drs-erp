@@ -28,8 +28,8 @@ public class FinanceiroDAO {
             ps.setString(1, c.getDescricao());
             if (c.getFornecedorId() > 0) ps.setInt(2, c.getFornecedorId()); else ps.setNull(2, Types.INTEGER);
             ps.setDouble(3, c.getValor());
-            ps.setDate(4, Date.valueOf(c.getDataEmissao()));
-            ps.setDate(5, Date.valueOf(c.getDataVencimento()));
+            if (c.getDataEmissao() != null) ps.setDate(4, Date.valueOf(c.getDataEmissao())); else ps.setDate(4, Date.valueOf(java.time.LocalDate.now()));
+            if (c.getDataVencimento() != null) ps.setDate(5, Date.valueOf(c.getDataVencimento())); else ps.setDate(5, Date.valueOf(java.time.LocalDate.now()));
             ps.setString(6, c.getStatus());
             ps.setString(7, c.getCategoria());
             ps.setString(8, c.getObservacoes());
@@ -46,13 +46,15 @@ public class FinanceiroDAO {
     }
 
     public boolean pagarConta(int id, double valorPago, String forma, LocalDate dataPag) {
-        String sql = "UPDATE contas_pagar SET status='PAGA', valor_pago=?, forma_pagamento=?, data_pagamento=? WHERE id=?";
+        int lojaId = com.erp.util.Sessao.getInstance().getLojaId();
+        String sql = "UPDATE contas_pagar SET status='PAGA', valor_pago=?, forma_pagamento=?, data_pagamento=? WHERE id=? AND loja_id=?";
         try (Connection conn = DatabaseConfig.getConexao();
              PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setDouble(1, valorPago);
             ps.setString(2, forma);
             ps.setDate(3, Date.valueOf(dataPag));
             ps.setInt(4, id);
+            ps.setInt(5, lojaId);
             return ps.executeUpdate() > 0;
         } catch (SQLException e) {
             log.error("Erro ao pagar conta", e);
@@ -63,18 +65,38 @@ public class FinanceiroDAO {
     public List<ContaPagar> listarContasPagar(String status, LocalDate inicio, LocalDate fim) {
         int lojaId = com.erp.util.Sessao.getInstance().getLojaId();
         List<ContaPagar> lista = new ArrayList<>();
-        String where = "WHERE cp.loja_id=" + lojaId;
-        if (status != null && !status.isBlank() && !"TODAS".equals(status)) where += " AND cp.status='" + status + "'";
-        if (inicio != null) where += " AND cp.data_vencimento >= '" + inicio + "'";
-        if (fim != null) where += " AND cp.data_vencimento <= '" + fim + "'";
+        List<Object> params = new ArrayList<>();
+
+        StringBuilder where = new StringBuilder("WHERE cp.loja_id=?");
+        params.add(lojaId);
+
+        if (status != null && !status.isBlank() && !"TODAS".equals(status)) {
+            where.append(" AND cp.status=?");
+            params.add(status);
+        }
+        if (inicio != null) {
+            where.append(" AND cp.data_vencimento >= ?");
+            params.add(Date.valueOf(inicio));
+        }
+        if (fim != null) {
+            where.append(" AND cp.data_vencimento <= ?");
+            params.add(Date.valueOf(fim));
+        }
         String sql = """
             SELECT cp.*, f.nome_fantasia AS fornecedor_nome
             FROM contas_pagar cp LEFT JOIN fornecedores f ON f.id = cp.fornecedor_id
             """ + where + " ORDER BY cp.data_vencimento";
         try (Connection conn = DatabaseConfig.getConexao();
-             Statement st = conn.createStatement();
-             ResultSet rs = st.executeQuery(sql)) {
-            while (rs.next()) lista.add(mapearPagar(rs));
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            for (int i = 0; i < params.size(); i++) {
+                Object p = params.get(i);
+                if (p instanceof Integer)   ps.setInt(i + 1, (Integer) p);
+                else if (p instanceof Date) ps.setDate(i + 1, (Date) p);
+                else                        ps.setString(i + 1, p.toString());
+            }
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) lista.add(mapearPagar(rs));
+            }
         } catch (SQLException e) {
             log.error("Erro ao listar contas a pagar", e);
         }
@@ -108,8 +130,8 @@ public class FinanceiroDAO {
             if (c.getClienteId() > 0) ps.setInt(2, c.getClienteId()); else ps.setNull(2, Types.INTEGER);
             if (c.getVendaId() > 0) ps.setInt(3, c.getVendaId()); else ps.setNull(3, Types.INTEGER);
             ps.setDouble(4, c.getValor());
-            ps.setDate(5, Date.valueOf(c.getDataEmissao()));
-            ps.setDate(6, Date.valueOf(c.getDataVencimento()));
+            if (c.getDataEmissao() != null) ps.setDate(5, Date.valueOf(c.getDataEmissao())); else ps.setDate(5, Date.valueOf(java.time.LocalDate.now()));
+            if (c.getDataVencimento() != null) ps.setDate(6, Date.valueOf(c.getDataVencimento())); else ps.setDate(6, Date.valueOf(java.time.LocalDate.now()));
             ps.setString(7, c.getStatus());
             ps.setString(8, c.getObservacoes());
             ps.setInt(9, lojaId);
@@ -125,13 +147,15 @@ public class FinanceiroDAO {
     }
 
     public boolean receberConta(int id, double valorRec, String forma, LocalDate dataRec) {
-        String sql = "UPDATE contas_receber SET status='RECEBIDA', valor_recebido=?, forma_recebimento=?, data_recebimento=? WHERE id=?";
+        int lojaId = com.erp.util.Sessao.getInstance().getLojaId();
+        String sql = "UPDATE contas_receber SET status='RECEBIDA', valor_recebido=?, forma_recebimento=?, data_recebimento=? WHERE id=? AND loja_id=?";
         try (Connection conn = DatabaseConfig.getConexao();
              PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setDouble(1, valorRec);
             ps.setString(2, forma);
             ps.setDate(3, Date.valueOf(dataRec));
             ps.setInt(4, id);
+            ps.setInt(5, lojaId);
             return ps.executeUpdate() > 0;
         } catch (SQLException e) {
             log.error("Erro ao receber conta", e);
@@ -142,18 +166,38 @@ public class FinanceiroDAO {
     public List<ContaReceber> listarContasReceber(String status, LocalDate inicio, LocalDate fim) {
         int lojaId = com.erp.util.Sessao.getInstance().getLojaId();
         List<ContaReceber> lista = new ArrayList<>();
-        String where = "WHERE cr.loja_id=" + lojaId;
-        if (status != null && !status.isBlank() && !"TODAS".equals(status)) where += " AND cr.status='" + status + "'";
-        if (inicio != null) where += " AND cr.data_vencimento >= '" + inicio + "'";
-        if (fim != null) where += " AND cr.data_vencimento <= '" + fim + "'";
+        List<Object> params = new ArrayList<>();
+
+        StringBuilder where = new StringBuilder("WHERE cr.loja_id=?");
+        params.add(lojaId);
+
+        if (status != null && !status.isBlank() && !"TODAS".equals(status)) {
+            where.append(" AND cr.status=?");
+            params.add(status);
+        }
+        if (inicio != null) {
+            where.append(" AND cr.data_vencimento >= ?");
+            params.add(Date.valueOf(inicio));
+        }
+        if (fim != null) {
+            where.append(" AND cr.data_vencimento <= ?");
+            params.add(Date.valueOf(fim));
+        }
         String sql = """
             SELECT cr.*, c.nome AS cliente_nome
             FROM contas_receber cr LEFT JOIN clientes c ON c.id = cr.cliente_id
             """ + where + " ORDER BY cr.data_vencimento";
         try (Connection conn = DatabaseConfig.getConexao();
-             Statement st = conn.createStatement();
-             ResultSet rs = st.executeQuery(sql)) {
-            while (rs.next()) lista.add(mapearReceber(rs));
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            for (int i = 0; i < params.size(); i++) {
+                Object p = params.get(i);
+                if (p instanceof Integer)   ps.setInt(i + 1, (Integer) p);
+                else if (p instanceof Date) ps.setDate(i + 1, (Date) p);
+                else                        ps.setString(i + 1, p.toString());
+            }
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) lista.add(mapearReceber(rs));
+            }
         } catch (SQLException e) {
             log.error("Erro ao listar contas a receber", e);
         }

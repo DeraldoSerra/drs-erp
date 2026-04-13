@@ -33,13 +33,14 @@ echo [2/3] Gerando instalador .exe com jpackage...
 jpackage ^
   --input "%PROJECT_DIR%target" ^
   --main-jar erp-desktop-1.0.0.jar ^
-  --main-class com.erp.Main ^
+  --main-class com.erp.Launcher ^
   --name "DRS ERP" ^
   --app-version 1.0.0 ^
   --description "DRS ERP - Sistema de Gestao e Frente de Caixa" ^
   --vendor "DRS" ^
   --dest "%INSTALLER_DIR%" ^
   --type exe ^
+  --icon "%PROJECT_DIR%src\main\resources\icon.ico" ^
   --win-shortcut ^
   --win-menu ^
   --win-menu-group "DRS ERP" ^

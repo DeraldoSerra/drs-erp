@@ -3,6 +3,9 @@ package com.erp.view;
 import com.erp.dao.LojaDAO;
 import com.erp.model.Loja;
 import com.erp.util.Alerta;
+import com.erp.util.ConsultaReceitaWS;
+import com.erp.util.ValidadorFiscal;
+import javafx.application.Platform;
 import javafx.beans.property.SimpleStringProperty;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
@@ -103,43 +106,135 @@ public class LojaView {
         grid.setVgap(12);
         grid.setPadding(new Insets(16));
 
-        TextField txtNome = new TextField(novo ? "" : nvl(loja.getNome()));
-        TextField txtCnpj = new TextField(novo ? "" : nvl(loja.getCnpj()));
-        TextField txtEnd  = new TextField(novo ? "" : nvl(loja.getEndereco()));
-        CheckBox chkAtiva = new CheckBox("Ativa");
+        TextField txtNome  = new TextField(novo ? "" : nvl(loja.getNome()));
+        TextField txtCnpj  = new TextField(novo ? "" : nvl(loja.getCnpj()));
+        TextField txtEnd   = new TextField(novo ? "" : nvl(loja.getEndereco()));
+        CheckBox  chkAtiva = new CheckBox("Ativa");
+        Label     lblStatus   = new Label();
+        Button    btnConsultar = new Button("🔍 Consultar");
+
         chkAtiva.setSelected(novo || loja.isAtiva());
         chkAtiva.setStyle("-fx-text-fill: #e0e0e0;");
-
         txtNome.setPromptText("Nome da loja");
         txtCnpj.setPromptText("00.000.000/0000-00");
         txtEnd.setPromptText("Endereço completo");
+        txtNome.setPrefWidth(240);
+        txtCnpj.setPrefWidth(180);
+        lblStatus.setStyle("-fx-font-size: 11px;");
+        btnConsultar.getStyleClass().add("btn-secundario");
+        btnConsultar.setDisable(true);
 
-        grid.add(new Label("Nome*:"), 0, 0);   grid.add(txtNome, 1, 0);
-        grid.add(new Label("CNPJ:"),  0, 1);   grid.add(txtCnpj, 1, 1);
-        grid.add(new Label("Endereço:"), 0, 2); grid.add(txtEnd, 1, 2);
-        grid.add(chkAtiva, 1, 3);
+        // Máscara e validação ao digitar
+        txtCnpj.textProperty().addListener((obs, oldVal, newVal) -> {
+            String masked = ValidadorFiscal.aplicarMascaraCpfCnpj(newVal);
+            if (!masked.equals(newVal)) { txtCnpj.setText(masked); return; }
+            String nums = ValidadorFiscal.apenasNumeros(newVal);
+            if (nums.length() == 14) {
+                if (ValidadorFiscal.validarCNPJ(nums)) {
+                    lblStatus.setText("✅ CNPJ válido");
+                    lblStatus.setStyle("-fx-text-fill: #4caf50; -fx-font-size: 11px;");
+                    btnConsultar.setDisable(false);
+                } else {
+                    lblStatus.setText("❌ CNPJ inválido");
+                    lblStatus.setStyle("-fx-text-fill: #f44336; -fx-font-size: 11px;");
+                    btnConsultar.setDisable(true);
+                }
+            } else {
+                lblStatus.setText("");
+                btnConsultar.setDisable(true);
+            }
+        });
 
-        for (int i = 0; i < 4; i++) {
-            Label l = (Label) grid.getChildren().get(i * 2);
-            l.setStyle("-fx-text-fill: #9e9e9e;");
-        }
+        // Consultar Receita Federal
+        btnConsultar.setOnAction(ev -> {
+            btnConsultar.setDisable(true);
+            btnConsultar.setText("⏳...");
+            String cnpjAtual = txtCnpj.getText();
+            Thread t = new Thread(() -> {
+                ConsultaReceitaWS.DadosCNPJ dados = ConsultaReceitaWS.consultar(cnpjAtual);
+                Platform.runLater(() -> {
+                    btnConsultar.setText("🔍 Consultar");
+                    btnConsultar.setDisable(false);
+                    if (dados.valido) {
+                        String nomeEmpresa = dados.nomeFantasia != null && !dados.nomeFantasia.isBlank()
+                                ? dados.nomeFantasia : dados.razaoSocial;
+                        if (txtNome.getText().isBlank()) txtNome.setText(nomeEmpresa);
+                        String end = "";
+                        if (!dados.logradouro.isBlank()) end += dados.logradouro;
+                        if (!dados.numero.isBlank())     end += ", " + dados.numero;
+                        if (!dados.bairro.isBlank())     end += " - " + dados.bairro;
+                        if (!dados.municipio.isBlank())  end += ", " + dados.municipio;
+                        if (!dados.uf.isBlank())         end += "/" + dados.uf;
+                        if (txtEnd.getText().isBlank())  txtEnd.setText(end);
+                        lblStatus.setText("✅ " + dados.razaoSocial);
+                        lblStatus.setStyle("-fx-text-fill: #4caf50; -fx-font-size: 11px;");
+                    } else {
+                        Alerta.aviso("CNPJ", dados.mensagemErro != null ? dados.mensagemErro : "Não encontrado");
+                    }
+                });
+            });
+            t.setDaemon(true);
+            t.start();
+        });
+
+        Label lNome = new Label("Nome*:");
+        Label lCnpj = new Label("CNPJ:");
+        Label lEnd  = new Label("Endereço:");
+        lNome.setStyle("-fx-text-fill: #9e9e9e;");
+        lCnpj.setStyle("-fx-text-fill: #9e9e9e;");
+        lEnd.setStyle("-fx-text-fill: #9e9e9e;");
+
+        HBox cnpjBox = new HBox(8, txtCnpj, btnConsultar);
+        cnpjBox.setAlignment(Pos.CENTER_LEFT);
+
+        grid.add(lNome,            0, 0); grid.add(txtNome,   1, 0);
+        grid.add(lCnpj,            0, 1); grid.add(cnpjBox,   1, 1);
+        grid.add(new Label(),      0, 2); grid.add(lblStatus, 1, 2);
+        grid.add(lEnd,             0, 3); grid.add(txtEnd,    1, 3);
+        grid.add(new Label(),      0, 4); grid.add(chkAtiva,  1, 4);
 
         dlg.getDialogPane().setContent(grid);
 
+        // Validação ao clicar OK
+        Button btnOk = (Button) dlg.getDialogPane().lookupButton(ButtonType.OK);
+        btnOk.addEventFilter(javafx.event.ActionEvent.ACTION, ev -> {
+            if (txtNome.getText().trim().isEmpty()) {
+                Alerta.aviso("Atenção", "O nome da loja é obrigatório.");
+                ev.consume();
+                return;
+            }
+            String cnpjDigitado = txtCnpj.getText().trim();
+            if (!cnpjDigitado.isBlank()) {
+                if (!ValidadorFiscal.validarCNPJ(ValidadorFiscal.apenasNumeros(cnpjDigitado))) {
+                    Alerta.aviso("CNPJ inválido", "O CNPJ informado não é válido. Verifique e tente novamente.");
+                    ev.consume();
+                }
+            }
+        });
+
         dlg.showAndWait().ifPresent(btn -> {
             if (btn == ButtonType.OK) {
-                String nome = txtNome.getText().trim();
-                if (nome.isEmpty()) { Alerta.aviso("Atenção", "O nome da loja é obrigatório."); return; }
+                String cnpjNums = ValidadorFiscal.apenasNumeros(txtCnpj.getText().trim());
+                String cnpjFormatado = cnpjNums.length() == 14 ? ValidadorFiscal.formatarCNPJ(cnpjNums) : null;
                 Loja l = novo ? new Loja() : loja;
-                l.setNome(nome);
-                l.setCnpj(txtCnpj.getText().trim());
-                l.setEndereco(txtEnd.getText().trim());
+                l.setNome(txtNome.getText().trim());
+                l.setCnpj(cnpjFormatado);
+                l.setEndereco(txtEnd.getText().trim().isEmpty() ? null : txtEnd.getText().trim());
                 l.setAtiva(chkAtiva.isSelected());
-                if (dao.salvar(l)) {
-                    Alerta.info("Loja", (novo ? "Loja criada" : "Loja atualizada") + " com sucesso!");
-                    carregarTabela();
-                } else {
-                    Alerta.erro("Erro", "Não foi possível salvar a loja.");
+                try {
+                    if (dao.salvar(l)) {
+                        Alerta.info("Loja", (novo ? "Loja criada" : "Loja atualizada") + " com sucesso!");
+                        carregarTabela();
+                    } else {
+                        Alerta.erro("Erro", "Não foi possível salvar a loja.");
+                    }
+                } catch (Exception ex) {
+                    String msg = ex.getMessage();
+                    if (msg != null && msg.contains("lojas_cnpj_unique")) {
+                        Alerta.erro("CNPJ Duplicado", "Já existe outra loja com este CNPJ.");
+                    } else {
+                        Alerta.erro("Erro ao Salvar", "Falha: " + msg);
+                    }
                 }
             }
         });

@@ -90,12 +90,16 @@ public class CaixaView {
             double valor = Formatador.parseMoeda(txtValorAbertura.getText());
             int usuarioId = Sessao.getInstance().getUsuario().getId();
             int lojaId = Sessao.getInstance().getLojaId();
-            SessaoCaixa nova = dao.abrirCaixa(valor, usuarioId, lojaId);
-            if (nova != null) {
-                Alerta.info("Caixa", "Caixa aberto com " + Formatador.formatarMoeda(valor) + " de abertura.");
-                carregarEstado();
-            } else {
-                Alerta.erro("Erro", "Não foi possível abrir o caixa.");
+            try {
+                SessaoCaixa nova = dao.abrirCaixa(valor, usuarioId, lojaId);
+                if (nova != null) {
+                    Alerta.info("Caixa", "Caixa aberto com " + Formatador.formatarMoeda(valor) + " de abertura.");
+                    carregarEstado();
+                } else {
+                    Alerta.erro("Erro", "Não foi possível abrir o caixa. Verifique o log do sistema.");
+                }
+            } catch (Exception ex) {
+                Alerta.erro("Erro ao Abrir Caixa", ex.getMessage());
             }
         });
 

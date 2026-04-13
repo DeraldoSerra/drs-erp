@@ -38,15 +38,23 @@ public class CaixaDAO {
     }
 
     public SessaoCaixa abrirCaixa(double valorAbertura, int usuarioId, int lojaId) {
+        // Garante que existe um caixa para essa loja, cria se não houver
+        int caixaId = garantirCaixa(lojaId);
+        if (caixaId <= 0) {
+            log.error("Não foi possível obter/criar caixa para loja {}", lojaId);
+            return null;
+        }
+
         String sql = """
             INSERT INTO sessoes_caixa (caixa_id, loja_id, usuario_id, valor_abertura, status)
-            VALUES (1, ?, ?, ?, 'ABERTO')
+            VALUES (?, ?, ?, ?, 'ABERTO')
             """;
         try (Connection conn = DatabaseConfig.getConexao();
              PreparedStatement ps = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
-            ps.setInt(1, lojaId);
-            ps.setInt(2, usuarioId);
-            ps.setBigDecimal(3, java.math.BigDecimal.valueOf(valorAbertura));
+            ps.setInt(1, caixaId);
+            ps.setInt(2, lojaId);
+            ps.setInt(3, usuarioId);
+            ps.setBigDecimal(4, java.math.BigDecimal.valueOf(valorAbertura));
             ps.executeUpdate();
             try (ResultSet rs = ps.getGeneratedKeys()) {
                 if (rs.next()) {
@@ -56,9 +64,36 @@ public class CaixaDAO {
                 }
             }
         } catch (SQLException e) {
-            log.error("Erro ao abrir caixa", e);
+            log.error("Erro ao abrir caixa: {}", e.getMessage(), e);
         }
         return null;
+    }
+
+    /** Retorna o caixa_id da loja, criando um registro padrão se não existir. */
+    private int garantirCaixa(int lojaId) {
+        String selectSql = "SELECT id FROM caixas WHERE loja_id = ? AND ativo = TRUE LIMIT 1";
+        try (Connection conn = DatabaseConfig.getConexao();
+             PreparedStatement ps = conn.prepareStatement(selectSql)) {
+            ps.setInt(1, lojaId);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) return rs.getInt(1);
+            }
+        } catch (SQLException e) {
+            log.error("Erro ao buscar caixa", e);
+            return -1;
+        }
+        // Não existe — cria automaticamente
+        String insertSql = "INSERT INTO caixas (loja_id, numero, nome, ativo) VALUES (?, 1, 'Caixa Principal', TRUE) RETURNING id";
+        try (Connection conn = DatabaseConfig.getConexao();
+             PreparedStatement ps = conn.prepareStatement(insertSql)) {
+            ps.setInt(1, lojaId);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) return rs.getInt(1);
+            }
+        } catch (SQLException e) {
+            log.error("Erro ao criar caixa automático", e);
+        }
+        return -1;
     }
 
     public boolean fecharCaixa(int sessaoId, double valorFechamento, String obs) {

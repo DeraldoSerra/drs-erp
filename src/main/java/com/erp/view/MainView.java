@@ -25,15 +25,30 @@ public class MainView {
         root.setCenter(new DashboardView().criar());
         root.setLeft(criarSidebar());
 
-        Scene scene = new Scene(root, 1280, 800);
+        // Usa 90% da tela como tamanho inicial; maximiza automaticamente
+        javafx.geometry.Rectangle2D tela = javafx.stage.Screen.getPrimary().getVisualBounds();
+        Scene scene = new Scene(root, tela.getWidth() * 0.9, tela.getHeight() * 0.9);
         scene.getStylesheets().add(getClass().getResource("/css/style.css").toExternalForm());
+
+        // Maximiza a janela principal
+        stage.setMaximized(true);
+
+        // Verifica atualização em background ao abrir (silencioso — só avisa se tiver nova versão)
+        javafx.application.Platform.runLater(() -> AtualizacaoView.verificar(true));
+
         return scene;
     }
 
-    private VBox criarSidebar() {
+    private javafx.scene.control.ScrollPane criarSidebar() {
         VBox sidebar = new VBox();
         sidebar.getStyleClass().add("sidebar");
-        sidebar.setPrefWidth(220);
+
+        // Largura proporcional: 15% da tela, mínimo 200px, máximo 260px
+        double telW = javafx.stage.Screen.getPrimary().getVisualBounds().getWidth();
+        double sideW = Math.max(200, Math.min(260, telW * 0.15));
+        sidebar.setPrefWidth(sideW);
+        sidebar.setMinWidth(sideW);
+        sidebar.setMaxWidth(sideW);
 
         Label logo = new Label("🛒 DRS ERP");
         logo.getStyleClass().add("sidebar-logo");
@@ -41,6 +56,7 @@ public class MainView {
         Label versaoSidebar = new Label(com.erp.util.AppInfo.getVersaoCompleta());
         versaoSidebar.setStyle("-fx-text-fill: #3d4059; -fx-font-size: 10px; -fx-padding: 0 20 8 20;");
 
+        Label usuario = new Label("👤 " + Sessao.getInstance().getUsuario().getNome());
         usuario.setStyle("-fx-text-fill: #5a5d6e; -fx-font-size: 11px; -fx-padding: 0 20 12 20;");
 
         Separator sep = new Separator();
@@ -97,10 +113,25 @@ public class MainView {
         btnSair.setMaxWidth(Double.MAX_VALUE);
         btnSair.setOnAction(e -> {
             Sessao.getInstance().encerrar();
-            stage.setScene(new LoginView(stage).criarScene());
             stage.setMaximized(false);
+            javafx.geometry.Rectangle2D tela2 = javafx.stage.Screen.getPrimary().getVisualBounds();
+            stage.setWidth(Math.min(800, tela2.getWidth() * 0.7));
+            stage.setHeight(Math.min(620, tela2.getHeight() * 0.75));
+            stage.setScene(new LoginView(stage).criarScene());
             stage.centerOnScreen();
         });
+
+        Button btnAtualizacao = new Button("🔄  Verificar Atualização");
+        btnAtualizacao.getStyleClass().add("sidebar-item");
+        btnAtualizacao.setStyle("-fx-text-fill: #74c0fc;");
+        btnAtualizacao.setMaxWidth(Double.MAX_VALUE);
+        btnAtualizacao.setOnAction(e -> AtualizacaoView.verificar(false));
+
+        Button btnAdminPainel = new Button("🛡️  Painel Admin");
+        btnAdminPainel.getStyleClass().add("sidebar-item");
+        btnAdminPainel.setStyle("-fx-text-fill: #ffd43b; -fx-font-weight: bold;");
+        btnAdminPainel.setMaxWidth(Double.MAX_VALUE);
+        btnAdminPainel.setOnAction(e -> { navegar(new AdminPainelView().criar(), btnAdminPainel); });
 
         sidebar.getChildren().addAll(
                 logo, versaoSidebar, usuario, sep,
@@ -109,11 +140,21 @@ public class MainView {
                 secGestao, btnEstoque, btnFinanceiro, btnRH, btnCaixa,
                 secRelLabel, btnRelatorios, btnRelFiscal,
                 secConfig, btnEmpresa, btnConfigNFe, btnNotasFiscais, btnLojas,
-                spacer, btnSair
+                spacer, btnAdminPainel, btnAtualizacao, btnSair
         );
 
         ativarBotao(btnDashboard);
-        return sidebar;
+
+        // Envolve sidebar em ScrollPane para telas pequenas
+        javafx.scene.control.ScrollPane scroll = new javafx.scene.control.ScrollPane(sidebar);
+        scroll.setFitToWidth(true);
+        scroll.setHbarPolicy(javafx.scene.control.ScrollPane.ScrollBarPolicy.NEVER);
+        scroll.setVbarPolicy(javafx.scene.control.ScrollPane.ScrollBarPolicy.AS_NEEDED);
+        scroll.setStyle("-fx-background-color: -cor-sidebar; -fx-background: -cor-sidebar; -fx-border-color: transparent;");
+        scroll.setPrefWidth(sideW);
+        scroll.setMinWidth(sideW);
+        scroll.setMaxWidth(sideW);
+        return scroll;
     }
 
     /** Cria um botão de menu sem ação (ação é configurada depois para evitar auto-referência). */

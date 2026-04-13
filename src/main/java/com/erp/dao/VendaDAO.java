@@ -83,7 +83,8 @@ public class VendaDAO {
     }
 
     public boolean cancelar(int vendaId, int usuarioId) {
-        String sql = "UPDATE vendas SET status='CANCELADA' WHERE id=?";
+        int lojaId = Sessao.getInstance().getLojaId();
+        String sql = "UPDATE vendas SET status='CANCELADA' WHERE id=? AND loja_id=?";
         try (Connection conn = DatabaseConfig.getConexao()) {
             conn.setAutoCommit(false);
             try {
@@ -94,6 +95,7 @@ public class VendaDAO {
                 }
                 try (PreparedStatement ps = conn.prepareStatement(sql)) {
                     ps.setInt(1, vendaId);
+                    ps.setInt(2, lojaId);
                     ps.executeUpdate();
                 }
                 conn.commit();
@@ -134,16 +136,18 @@ public class VendaDAO {
     }
 
     public Optional<Venda> buscarPorId(int id) {
+        int lojaId = Sessao.getInstance().getLojaId();
         String sql = """
             SELECT v.*, c.nome AS cliente_nome, u.nome AS usuario_nome
             FROM vendas v
             LEFT JOIN clientes c ON c.id = v.cliente_id
             LEFT JOIN usuarios u ON u.id = v.usuario_id
-            WHERE v.id = ?
+            WHERE v.id = ? AND v.loja_id = ?
             """;
         try (Connection conn = DatabaseConfig.getConexao();
              PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setInt(1, id);
+            ps.setInt(2, lojaId);
             try (ResultSet rs = ps.executeQuery()) {
                 if (rs.next()) {
                     Venda v = mapear(rs);
@@ -266,9 +270,13 @@ public class VendaDAO {
     }
 
     private String gerarNumero(Connection conn) throws SQLException {
-        try (Statement st = conn.createStatement();
-             ResultSet rs = st.executeQuery("SELECT COALESCE(MAX(CAST(numero AS BIGINT)), 0) + 1 FROM vendas")) {
-            if (rs.next()) return String.format("%08d", rs.getLong(1));
+        int lojaId = Sessao.getInstance().getLojaId();
+        try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT COALESCE(MAX(CAST(numero AS BIGINT)), 0) + 1 FROM vendas WHERE loja_id = ?")) {
+            ps.setInt(1, lojaId);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) return String.format("%08d", rs.getLong(1));
+            }
         }
         return String.format("%08d", System.currentTimeMillis() % 100000000);
     }

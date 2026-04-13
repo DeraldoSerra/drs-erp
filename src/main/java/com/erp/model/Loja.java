@@ -6,6 +6,8 @@ public class Loja {
     private String cnpj;
     private String endereco;
     private boolean ativa;
+    private boolean bloqueada;
+    private String motivoBloqueio;
 
     public Loja() {}
 
@@ -28,6 +30,12 @@ public class Loja {
 
     public boolean isAtiva() { return ativa; }
     public void setAtiva(boolean ativa) { this.ativa = ativa; }
+
+    public boolean isBloqueada() { return bloqueada; }
+    public void setBloqueada(boolean bloqueada) { this.bloqueada = bloqueada; }
+
+    public String getMotivoBloqueio() { return motivoBloqueio; }
+    public void setMotivoBloqueio(String motivoBloqueio) { this.motivoBloqueio = motivoBloqueio; }
 
     @Override
     public String toString() { return nome; }

@@ -12,6 +12,8 @@ public class EmpresaDAO {
 
     private static final Logger log = LoggerFactory.getLogger(EmpresaDAO.class);
 
+    private String nvl(String v) { return v == null ? "" : v; }
+
     /** Carrega a empresa cadastrada para a loja da sessão */
     public Optional<Empresa> carregar() {
         int lojaId = com.erp.util.Sessao.getInstance().getLojaId();
@@ -28,80 +30,72 @@ public class EmpresaDAO {
         return Optional.empty();
     }
 
-    /** Salva ou atualiza os dados da empresa */
+    /** Salva ou atualiza os dados da empresa usando upsert por loja_id */
     public boolean salvar(Empresa e) {
-        Optional<Empresa> existente = carregar();
-        if (existente.isPresent()) {
-            return atualizar(e, existente.get().getId());
-        } else {
-            return inserir(e);
-        }
-    }
-
-    private boolean inserir(Empresa e) {
+        int lojaId = com.erp.util.Sessao.getInstance().getLojaId();
         String sql = """
             INSERT INTO empresa (razao_social, nome_fantasia, cnpj, ie, im,
                 regime_tributario, email, telefone, celular, site,
                 cep, logradouro, numero, complemento, bairro, cidade, estado,
                 logo_path, observacoes, loja_id)
             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            ON CONFLICT (loja_id) DO UPDATE SET
+                razao_social=EXCLUDED.razao_social,
+                nome_fantasia=EXCLUDED.nome_fantasia,
+                cnpj=EXCLUDED.cnpj,
+                ie=EXCLUDED.ie,
+                im=EXCLUDED.im,
+                regime_tributario=EXCLUDED.regime_tributario,
+                email=EXCLUDED.email,
+                telefone=EXCLUDED.telefone,
+                celular=EXCLUDED.celular,
+                site=EXCLUDED.site,
+                cep=EXCLUDED.cep,
+                logradouro=EXCLUDED.logradouro,
+                numero=EXCLUDED.numero,
+                complemento=EXCLUDED.complemento,
+                bairro=EXCLUDED.bairro,
+                cidade=EXCLUDED.cidade,
+                estado=EXCLUDED.estado,
+                logo_path=EXCLUDED.logo_path,
+                observacoes=EXCLUDED.observacoes,
+                atualizado_em=NOW()
             """;
         try (Connection conn = DatabaseConfig.getConexao();
              PreparedStatement ps = conn.prepareStatement(sql)) {
-            int lojaId = com.erp.util.Sessao.getInstance().getLojaId();
             preencherPs(ps, e);
             ps.setInt(20, lojaId);
             ps.executeUpdate();
-            log.info("Empresa inserida: {}", e.getRazaoSocial());
+            log.info("Empresa salva (upsert): {}", e.getRazaoSocial());
             return true;
         } catch (SQLException ex) {
-            log.error("Erro ao inserir empresa", ex);
-            return false;
-        }
-    }
-
-    private boolean atualizar(Empresa e, int id) {
-        String sql = """
-            UPDATE empresa SET
-                razao_social=?, nome_fantasia=?, cnpj=?, ie=?, im=?,
-                regime_tributario=?, email=?, telefone=?, celular=?, site=?,
-                cep=?, logradouro=?, numero=?, complemento=?, bairro=?, cidade=?, estado=?,
-                logo_path=?, observacoes=?, atualizado_em=NOW()
-            WHERE id=?
-            """;
-        try (Connection conn = DatabaseConfig.getConexao();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
-            preencherPs(ps, e);
-            ps.setInt(20, id);
-            ps.executeUpdate();
-            log.info("Empresa atualizada: {}", e.getRazaoSocial());
-            return true;
-        } catch (SQLException ex) {
-            log.error("Erro ao atualizar empresa", ex);
+            log.error("Erro ao salvar empresa", ex);
             return false;
         }
     }
 
     private void preencherPs(PreparedStatement ps, Empresa e) throws SQLException {
-        ps.setString(1,  e.getRazaoSocial());
-        ps.setString(2,  e.getNomeFantasia());
-        ps.setString(3,  e.getCnpj());
-        ps.setString(4,  e.getIe());
-        ps.setString(5,  e.getIm());
-        ps.setString(6,  e.getRegimeTributario());
-        ps.setString(7,  e.getEmail());
-        ps.setString(8,  e.getTelefone());
-        ps.setString(9,  e.getCelular());
-        ps.setString(10, e.getSite());
-        ps.setString(11, e.getCep());
-        ps.setString(12, e.getLogradouro());
-        ps.setString(13, e.getNumero());
-        ps.setString(14, e.getComplemento());
-        ps.setString(15, e.getBairro());
-        ps.setString(16, e.getCidade());
-        ps.setString(17, e.getEstado());
-        ps.setString(18, e.getLogoPath());
-        ps.setString(19, e.getObservacoes());
+        ps.setString(1,  nvl(e.getRazaoSocial()));
+        ps.setString(2,  nvl(e.getNomeFantasia()));
+        ps.setString(3,  nvl(e.getCnpj()));
+        ps.setString(4,  nvl(e.getIe()));
+        ps.setString(5,  nvl(e.getIm()));
+        ps.setString(6,  e.getRegimeTributario() != null ? e.getRegimeTributario() : "SIMPLES_NACIONAL");
+        ps.setString(7,  nvl(e.getEmail()));
+        ps.setString(8,  nvl(e.getTelefone()));
+        ps.setString(9,  nvl(e.getCelular()));
+        ps.setString(10, nvl(e.getSite()));
+        ps.setString(11, nvl(e.getCep()));
+        ps.setString(12, nvl(e.getLogradouro()));
+        ps.setString(13, nvl(e.getNumero()));
+        ps.setString(14, nvl(e.getComplemento()));
+        ps.setString(15, nvl(e.getBairro()));
+        ps.setString(16, nvl(e.getCidade()));
+        // estado CHAR/VARCHAR(2) — nunca nulo, manda string vazia se não selecionado
+        String est = e.getEstado();
+        ps.setString(17, est != null && est.length() == 2 ? est : "");
+        ps.setString(18, nvl(e.getLogoPath()));
+        ps.setString(19, nvl(e.getObservacoes()));
     }
 
     private Empresa mapear(ResultSet rs) throws SQLException {

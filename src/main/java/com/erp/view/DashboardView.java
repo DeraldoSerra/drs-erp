@@ -82,7 +82,8 @@ public class DashboardView {
     private VBox kpiCard(String titulo, String valor, String estilo, String sub) {
         VBox card = new VBox(6);
         card.getStyleClass().addAll("card", estilo);
-        card.setPrefHeight(110);
+        card.setMinHeight(90);
+        card.setPrefHeight(Region.USE_COMPUTED_SIZE);
         Label lTit = new Label(titulo);
         lTit.getStyleClass().add("card-titulo");
         Label lVal = new Label(valor);
@@ -122,7 +123,10 @@ public class DashboardView {
         BarChart<String, Number> chart = new BarChart<>(xAxis, yAxis);
         chart.setLegendVisible(false);
         chart.setAnimated(false);
-        chart.setPrefHeight(250);
+        chart.setPrefHeight(Region.USE_COMPUTED_SIZE);
+        chart.setMinHeight(220);
+        chart.setMaxHeight(Double.MAX_VALUE);
+        VBox.setVgrow(chart, Priority.ALWAYS);
         chart.setStyle("-fx-background-color: transparent;");
         chart.getStyleClass().add("chart-content");
 
@@ -146,7 +150,10 @@ public class DashboardView {
         PieChart chart = new PieChart();
         chart.setLegendVisible(true);
         chart.setAnimated(false);
-        chart.setPrefHeight(250);
+        chart.setPrefHeight(Region.USE_COMPUTED_SIZE);
+        chart.setMinHeight(220);
+        chart.setMaxHeight(Double.MAX_VALUE);
+        VBox.setVgrow(chart, Priority.ALWAYS);
         chart.setStyle("-fx-background-color: transparent;");
         chart.getStyleClass().add("chart-content");
 

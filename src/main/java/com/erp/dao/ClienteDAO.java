@@ -37,15 +37,17 @@ public class ClienteDAO {
     }
 
     public boolean atualizar(Cliente c) {
+        int lojaId = com.erp.util.Sessao.getInstance().getLojaId();
         String sql = """
             UPDATE clientes SET nome=?, cpf_cnpj=?, tipo_pessoa=?, rg_ie=?, email=?, telefone=?, celular=?,
             cep=?, logradouro=?, numero=?, complemento=?, bairro=?, cidade=?, estado=?, limite_credito=?,
-            observacoes=?, ativo=?, atualizado_em=NOW() WHERE id=?
+            observacoes=?, ativo=?, atualizado_em=NOW() WHERE id=? AND loja_id=?
             """;
         try (Connection conn = DatabaseConfig.getConexao();
              PreparedStatement ps = conn.prepareStatement(sql)) {
             preencherPS(ps, c);
             ps.setInt(18, c.getId());
+            ps.setInt(19, lojaId);
             return ps.executeUpdate() > 0;
         } catch (SQLException e) {
             log.error("Erro ao atualizar cliente", e);
@@ -54,10 +56,12 @@ public class ClienteDAO {
     }
 
     public boolean excluir(int id) {
-        String sql = "UPDATE clientes SET ativo = FALSE WHERE id = ?";
+        int lojaId = com.erp.util.Sessao.getInstance().getLojaId();
+        String sql = "UPDATE clientes SET ativo = FALSE WHERE id = ? AND loja_id = ?";
         try (Connection conn = DatabaseConfig.getConexao();
              PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setInt(1, id);
+            ps.setInt(2, lojaId);
             return ps.executeUpdate() > 0;
         } catch (SQLException e) {
             log.error("Erro ao excluir cliente", e);
