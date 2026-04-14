@@ -10,8 +10,11 @@ set MVN=C:\Users\Semnick144hz\.m2\maven-portable\apache-maven-3.9.6\bin\mvn.cmd
 set PROJECT_DIR=%~dp0
 set INSTALLER_DIR=%PROJECT_DIR%installer
 
+:: Ler versão do app.properties
+for /f "tokens=2 delims==" %%v in ('findstr "app.version=" "%PROJECT_DIR%src\main\resources\app.properties"') do set VERSAO=%%v
+
 echo ============================================================
-echo  DRS ERP - Gerando Instalador
+echo  DRS ERP - Gerando Instalador v%VERSAO%
 echo ============================================================
 
 :: 1. Build do JAR
@@ -32,10 +35,10 @@ if not exist "%INSTALLER_DIR%" mkdir "%INSTALLER_DIR%"
 echo [2/3] Gerando instalador .exe com jpackage...
 jpackage ^
   --input "%PROJECT_DIR%target" ^
-  --main-jar erp-desktop-1.0.0.jar ^
+  --main-jar erp-desktop-%VERSAO%.jar ^
   --main-class com.erp.Launcher ^
   --name "DRS ERP" ^
-  --app-version 1.0.0 ^
+  --app-version %VERSAO% ^
   --description "DRS ERP - Sistema de Gestao e Frente de Caixa" ^
   --vendor "DRS" ^
   --dest "%INSTALLER_DIR%" ^
@@ -56,5 +59,6 @@ if errorlevel 1 (
 echo [3/3] Instalador criado em: %INSTALLER_DIR%
 echo ============================================================
 echo  CONCLUIDO! Arquivo pronto para distribuir.
+echo  Agora execute nova_versao.bat para publicar o release.
 echo ============================================================
 pause

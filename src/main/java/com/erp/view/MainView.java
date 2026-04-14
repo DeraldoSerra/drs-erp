@@ -85,6 +85,17 @@ public class MainView {
         boolean isAdmin    = usuarioLogado != null && "ADMIN".equals(usuarioLogado.getPerfil());
         boolean isGerente  = usuarioLogado != null && (isAdmin || "GERENTE".equals(usuarioLogado.getPerfil()));
 
+        // Verificar se a empresa habilitou NF-e
+        boolean nfeHabilitado = false;
+        if (isAdmin) {
+            try {
+                com.erp.dao.EmpresaDAO empresaDAO = new com.erp.dao.EmpresaDAO();
+                nfeHabilitado = empresaDAO.carregar()
+                        .map(com.erp.model.Empresa::isHabilitaNFe)
+                        .orElse(false);
+            } catch (Exception ignored) {}
+        }
+
         // Configurar ações depois (botões já existem, sem problema de inicialização)
         btnDashboard   .setOnAction(e -> navegar(new DashboardView().criar(),       btnDashboard));
         btnVendas      .setOnAction(e -> navegar(new VendaView().criar(),           btnVendas));
@@ -110,12 +121,20 @@ public class MainView {
         Label secConfig     = secLabel("CONFIGURAÇÕES");
 
         // === Restrições de perfil ===
-        // SOMENTE ADMIN: Lojas, Empresa, Config NF-e, NF-e, Funcionários
+        // SOMENTE ADMIN: Lojas, Funcionários
         btnLojas       .setVisible(isAdmin); btnLojas       .setManaged(isAdmin);
-        btnEmpresa     .setVisible(isAdmin); btnEmpresa     .setManaged(isAdmin);
-        btnConfigNFe   .setVisible(isAdmin); btnConfigNFe   .setManaged(isAdmin);
-        btnNotasFiscais.setVisible(isAdmin); btnNotasFiscais.setManaged(isAdmin);
         btnRH          .setVisible(isAdmin); btnRH          .setManaged(isAdmin);
+
+        // GERENTE ou ADMIN: Empresa (dados fiscais da empresa)
+        btnEmpresa     .setVisible(isGerente); btnEmpresa     .setManaged(isGerente);
+
+        // Config NF-e e Notas Fiscais: ADMIN + empresa com habilitaNFe = true
+        boolean verNFe = isAdmin && nfeHabilitado;
+        btnConfigNFe   .setVisible(isAdmin);  btnConfigNFe   .setManaged(isAdmin);
+        btnNotasFiscais.setVisible(verNFe);   btnNotasFiscais.setManaged(verNFe);
+
+        // Seção CONFIGURAÇÕES aparece para gerente ou admin
+        secConfig.setVisible(isGerente); secConfig.setManaged(isGerente);
 
         // GERENTE ou ADMIN: Financeiro, Relatórios Fiscais
         btnFinanceiro  .setVisible(isGerente); btnFinanceiro  .setManaged(isGerente);

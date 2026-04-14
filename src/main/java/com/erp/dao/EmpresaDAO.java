@@ -35,8 +35,8 @@ public class EmpresaDAO {
             INSERT INTO empresa (razao_social, nome_fantasia, cnpj, ie, im,
                 regime_tributario, email, telefone, celular, site,
                 cep, logradouro, numero, complemento, bairro, cidade, estado,
-                logo_path, observacoes, loja_id)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                logo_path, observacoes, habilita_nfe, tipo_emissao_nfe, loja_id)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             ON CONFLICT (loja_id) DO UPDATE SET
                 razao_social=EXCLUDED.razao_social,
                 nome_fantasia=EXCLUDED.nome_fantasia,
@@ -57,12 +57,14 @@ public class EmpresaDAO {
                 estado=EXCLUDED.estado,
                 logo_path=EXCLUDED.logo_path,
                 observacoes=EXCLUDED.observacoes,
+                habilita_nfe=EXCLUDED.habilita_nfe,
+                tipo_emissao_nfe=EXCLUDED.tipo_emissao_nfe,
                 atualizado_em=NOW()
             """;
         try (Connection conn = DatabaseConfig.getConexao();
              PreparedStatement ps = conn.prepareStatement(sql)) {
             preencherPs(ps, e);
-            ps.setInt(20, lojaId);
+            ps.setInt(22, lojaId);
             ps.executeUpdate();
             return true;
         } catch (SQLException ex) {
@@ -94,8 +96,8 @@ public class EmpresaDAO {
             INSERT INTO empresa (razao_social, nome_fantasia, cnpj, ie, im,
                 regime_tributario, email, telefone, celular, site,
                 cep, logradouro, numero, complemento, bairro, cidade, estado,
-                logo_path, observacoes, loja_id)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                logo_path, observacoes, habilita_nfe, tipo_emissao_nfe, loja_id)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             ON CONFLICT (loja_id) DO UPDATE SET
                 razao_social=EXCLUDED.razao_social,
                 nome_fantasia=EXCLUDED.nome_fantasia,
@@ -116,12 +118,14 @@ public class EmpresaDAO {
                 estado=EXCLUDED.estado,
                 logo_path=EXCLUDED.logo_path,
                 observacoes=EXCLUDED.observacoes,
+                habilita_nfe=EXCLUDED.habilita_nfe,
+                tipo_emissao_nfe=EXCLUDED.tipo_emissao_nfe,
                 atualizado_em=NOW()
             """;
         try (Connection conn = DatabaseConfig.getConexao();
              PreparedStatement ps = conn.prepareStatement(sql)) {
             preencherPs(ps, e);
-            ps.setInt(20, lojaId);
+            ps.setInt(22, lojaId);
             ps.executeUpdate();
             log.info("Empresa salva (upsert): {}", e.getRazaoSocial());
             return true;
@@ -153,6 +157,8 @@ public class EmpresaDAO {
         ps.setString(17, est != null && est.length() == 2 ? est : "");
         ps.setString(18, nvl(e.getLogoPath()));
         ps.setString(19, nvl(e.getObservacoes()));
+        ps.setBoolean(20, e.isHabilitaNFe());
+        ps.setString(21, e.getTipoEmissaoNFe() != null ? e.getTipoEmissaoNFe() : "SEFAZ");
     }
 
     private Empresa mapear(ResultSet rs) throws SQLException {
@@ -177,6 +183,11 @@ public class EmpresaDAO {
         e.setEstado(rs.getString("estado"));
         e.setLogoPath(rs.getString("logo_path"));
         e.setObservacoes(rs.getString("observacoes"));
+        try { e.setHabilitaNFe(rs.getBoolean("habilita_nfe")); } catch (SQLException ignored) {}
+        try {
+            String tipe = rs.getString("tipo_emissao_nfe");
+            e.setTipoEmissaoNFe(tipe != null ? tipe : "SEFAZ");
+        } catch (SQLException ignored) {}
         Timestamp ts = rs.getTimestamp("atualizado_em");
         if (ts != null) e.setAtualizadoEm(ts.toLocalDateTime());
         return e;

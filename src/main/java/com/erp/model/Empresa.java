@@ -24,6 +24,8 @@ public class Empresa {
     private String estado;
     private String logoPath;    // caminho do arquivo de logo
     private String observacoes;
+    private boolean habilitaNFe   = false;
+    private String tipoEmissaoNFe = "SEFAZ"; // SEFAZ ou CONTINGENCIA
     private LocalDateTime atualizadoEm;
 
     public Empresa() {}
@@ -88,6 +90,12 @@ public class Empresa {
 
     public String getObservacoes() { return observacoes; }
     public void setObservacoes(String observacoes) { this.observacoes = observacoes; }
+
+    public boolean isHabilitaNFe() { return habilitaNFe; }
+    public void setHabilitaNFe(boolean habilitaNFe) { this.habilitaNFe = habilitaNFe; }
+
+    public String getTipoEmissaoNFe() { return tipoEmissaoNFe; }
+    public void setTipoEmissaoNFe(String tipoEmissaoNFe) { this.tipoEmissaoNFe = tipoEmissaoNFe; }
 
     public LocalDateTime getAtualizadoEm() { return atualizadoEm; }
     public void setAtualizadoEm(LocalDateTime atualizadoEm) { this.atualizadoEm = atualizadoEm; }

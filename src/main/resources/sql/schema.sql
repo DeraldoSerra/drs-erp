@@ -293,3 +293,49 @@ SELECT 'RECEBER' AS tipo, descricao, valor, data_vencimento,
 FROM contas_receber
 WHERE status = 'ABERTA' AND data_vencimento <= CURRENT_DATE + 7
 ORDER BY data_vencimento;
+
+-- ============================================================
+-- TABELA: versoes (controle de atualizações do sistema)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS versoes (
+    id               SERIAL PRIMARY KEY,
+    versao           VARCHAR(20)  NOT NULL UNIQUE,
+    descricao        TEXT,
+    url_download     VARCHAR(500) NOT NULL,
+    obrigatoria      BOOLEAN      NOT NULL DEFAULT FALSE,
+    data_lancamento  TIMESTAMP    NOT NULL DEFAULT NOW()
+);
+
+-- ============================================================
+-- TABELA: empresa (dados cadastrais por loja)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS empresa (
+    id               SERIAL PRIMARY KEY,
+    loja_id          INT NOT NULL UNIQUE REFERENCES lojas(id),
+    razao_social     VARCHAR(150) NOT NULL,
+    nome_fantasia    VARCHAR(100),
+    cnpj             VARCHAR(18)  UNIQUE,
+    ie               VARCHAR(20),
+    im               VARCHAR(20),
+    regime_tributario VARCHAR(30) DEFAULT 'SIMPLES_NACIONAL',
+    email            VARCHAR(100),
+    telefone         VARCHAR(20),
+    celular          VARCHAR(20),
+    site             VARCHAR(100),
+    cep              VARCHAR(10),
+    logradouro       VARCHAR(150),
+    numero           VARCHAR(10),
+    complemento      VARCHAR(80),
+    bairro           VARCHAR(80),
+    cidade           VARCHAR(80),
+    estado           CHAR(2),
+    logo_path        VARCHAR(500),
+    observacoes      TEXT,
+    habilita_nfe     BOOLEAN NOT NULL DEFAULT FALSE,
+    tipo_emissao_nfe VARCHAR(20)  NOT NULL DEFAULT 'SEFAZ',
+    atualizado_em    TIMESTAMP    NOT NULL DEFAULT NOW()
+);
+
+-- Migração: adicionar colunas NF-e em tabela empresa já existente
+ALTER TABLE empresa ADD COLUMN IF NOT EXISTS habilita_nfe     BOOLEAN     NOT NULL DEFAULT FALSE;
+ALTER TABLE empresa ADD COLUMN IF NOT EXISTS tipo_emissao_nfe VARCHAR(20) NOT NULL DEFAULT 'SEFAZ';

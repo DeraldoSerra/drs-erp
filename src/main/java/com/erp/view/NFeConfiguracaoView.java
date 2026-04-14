@@ -1,8 +1,11 @@
 package com.erp.view;
 
 import com.erp.dao.NFeConfigDAO;
+import com.erp.dao.EmpresaDAO;
 import com.erp.model.NFeConfig;
+import com.erp.model.Empresa;
 import com.erp.service.NFeService;
+import com.erp.service.ValidacaoNFeCompleta;
 import com.erp.util.Alerta;
 import com.erp.util.ConsultaViaCEP;
 import com.erp.util.ValidadorFiscal;
@@ -19,11 +22,14 @@ import javafx.stage.FileChooser;
 import javafx.stage.Stage;
 
 import java.io.File;
+import java.io.FileInputStream;
+import java.security.KeyStore;
 import java.util.Optional;
 
 public class NFeConfiguracaoView {
 
     private final NFeConfigDAO dao = new NFeConfigDAO();
+    private final EmpresaDAO empresaDAO = new EmpresaDAO();
 
     // Campos
     private TextField tfCertPath;
@@ -201,12 +207,12 @@ public class NFeConfiguracaoView {
     }
 
     private HBox criarBarraAcoes() {
-        Button btnTestar = new Button("🔍  Testar Conexão SEFAZ");
-        Button btnSalvar = new Button("💾  Salvar Configuração");
+        Button btnValidar = new Button("🧪  Validar e Habilitar NF-e");
+        Button btnSalvar  = new Button("💾  Salvar Configuração");
 
-        btnTestar.setStyle("""
-            -fx-background-color: #3a3d4a;
-            -fx-text-fill: #90caf9;
+        btnValidar.setStyle("""
+            -fx-background-color: #2e7d32;
+            -fx-text-fill: white;
             -fx-padding: 10 18;
             -fx-background-radius: 6;
             -fx-cursor: hand;
@@ -221,10 +227,10 @@ public class NFeConfiguracaoView {
             -fx-font-weight: bold;
             """);
 
-        btnTestar.setOnAction(e -> testarConexao());
+        btnValidar.setOnAction(e -> validarEHabilitar());
         btnSalvar.setOnAction(e -> salvar());
 
-        HBox barra = new HBox(12, btnTestar, btnSalvar);
+        HBox barra = new HBox(12, btnValidar, btnSalvar);
         barra.setPadding(new Insets(14, 28, 20, 28));
         barra.setAlignment(Pos.CENTER_RIGHT);
         barra.setStyle("-fx-background-color: #1a1c24; -fx-border-color: #2a2d3a; -fx-border-width: 1 0 0 0;");
@@ -232,7 +238,9 @@ public class NFeConfiguracaoView {
     }
 
     private void carregarDados() {
-        dao.carregar().ifPresent(cfg -> {
+        // 1. Tenta carregar NFeConfig salvo
+        Optional<NFeConfig> cfgOpt = dao.carregar();
+        cfgOpt.ifPresent(cfg -> {
             tfCertPath.setText(nvl(cfg.getCertificadoPath()));
             pfCertSenha.setText(nvl(cfg.getCertificadoSenha()));
             tfCnpj.setText(nvl(cfg.getCnpj()));
@@ -252,6 +260,43 @@ public class NFeConfiguracaoView {
             tfProximoNumero.setText(String.valueOf(cfg.getProximoNumero()));
             cbAmbiente.setValue(nvl(cfg.getAmbiente(), "PRODUCAO"));
         });
+
+        // 2. Se dados fiscais estiverem vazios, preenche a partir do cadastro de Empresa
+        if (tfCnpj.getText().isBlank() || tfRazao.getText().isBlank()) {
+            empresaDAO.carregar().ifPresent(emp -> {
+                if (tfCnpj.getText().isBlank() && emp.getCnpj() != null)
+                    tfCnpj.setText(emp.getCnpj());
+                if (tfIe.getText().isBlank() && emp.getIe() != null)
+                    tfIe.setText(emp.getIe());
+                if (tfRazao.getText().isBlank() && emp.getRazaoSocial() != null)
+                    tfRazao.setText(emp.getRazaoSocial());
+                if (tfFantasia.getText().isBlank() && emp.getNomeFantasia() != null)
+                    tfFantasia.setText(emp.getNomeFantasia());
+                if (tfLogradouro.getText().isBlank() && emp.getLogradouro() != null)
+                    tfLogradouro.setText(emp.getLogradouro());
+                if (tfNumero.getText().isBlank() && emp.getNumero() != null)
+                    tfNumero.setText(emp.getNumero());
+                if (tfBairro.getText().isBlank() && emp.getBairro() != null)
+                    tfBairro.setText(emp.getBairro());
+                if (tfMunicipio.getText().isBlank() && emp.getCidade() != null)
+                    tfMunicipio.setText(emp.getCidade());
+                if (tfUf.getText().isBlank() && emp.getEstado() != null)
+                    tfUf.setText(emp.getEstado());
+                if (tfCep.getText().isBlank() && emp.getCep() != null)
+                    tfCep.setText(emp.getCep());
+                if (tfTelefone.getText().isBlank() && emp.getTelefone() != null)
+                    tfTelefone.setText(emp.getTelefone());
+                // Regime
+                if (cfgOpt.isEmpty() && emp.getRegimeTributario() != null) {
+                    int idx = switch (emp.getRegimeTributario()) {
+                        case "SIMPLES_NACIONAL", "MEI" -> 0;
+                        case "LUCRO_PRESUMIDO"         -> 1;
+                        default                        -> 2;
+                    };
+                    cbRegime.getSelectionModel().select(idx);
+                }
+            });
+        }
     }
 
     private void configurarValidacoes() {
@@ -291,15 +336,174 @@ public class NFeConfiguracaoView {
     }
 
     private void salvar() {
-        NFeConfig cfg = new NFeConfig();
-        cfg.setCertificadoPath(tfCertPath.getText().trim());
-        cfg.setCertificadoSenha(pfCertSenha.getText());
-        String cnpjVal = tfCnpj.getText().trim();
+        NFeConfig cfg = construirCfg();
+        String cnpjVal = cfg.getCnpj();
         if (!cnpjVal.isBlank() && !ValidadorFiscal.validarCNPJ(ValidadorFiscal.apenasNumeros(cnpjVal))) {
             Alerta.aviso("Atenção", "CNPJ inválido. Verifique os dígitos antes de salvar.");
             return;
         }
-        cfg.setCnpj(cnpjVal);
+        if (dao.salvar(cfg)) {
+            setStatus("✅ Configuração salva com sucesso!", "#4caf50");
+            Alerta.info("Sucesso", "Configuração NF-e salva com sucesso.");
+        } else {
+            setStatus("❌ Erro ao salvar configuração.", "#f44336");
+            Alerta.erro("Erro", "Não foi possível salvar a configuração NF-e.");
+        }
+    }
+
+    /**
+     * Executa toda a validação real (certificado, Receita Federal, SEFAZ) via
+     * {@link ValidacaoNFeCompleta}, exibe resultado passo a passo e, se aprovado,
+     * salva a configuração e habilita a emissão de NF-e.
+     */
+    private void validarEHabilitar() {
+        // Campos obrigatórios mínimos antes de disparar a thread
+        if (tfCertPath.getText().isBlank()) {
+            Alerta.aviso("Atenção", "Selecione o certificado .pfx antes de validar.");
+            return;
+        }
+        if (pfCertSenha.getText().isBlank()) {
+            Alerta.aviso("Atenção", "Informe a senha do certificado.");
+            return;
+        }
+        if (tfCnpj.getText().isBlank() || tfRazao.getText().isBlank()) {
+            Alerta.aviso("Atenção", "Preencha CNPJ e Razão Social antes de validar.");
+            return;
+        }
+        if (!ValidadorFiscal.validarCNPJ(ValidadorFiscal.apenasNumeros(tfCnpj.getText()))) {
+            Alerta.aviso("Atenção", "CNPJ inválido. Verifique os dígitos.");
+            return;
+        }
+
+        setStatus("🔄 Executando validações (certificado → Receita Federal → SEFAZ)...", "#90caf9");
+        NFeConfig cfg = construirCfg();
+
+        new Thread(() -> {
+            ValidacaoNFeCompleta.Resultado resultado = new ValidacaoNFeCompleta().validar(cfg);
+            Platform.runLater(() -> mostrarResultadoValidacao(resultado, cfg));
+        }, "nfe-validacao-completa").start();
+    }
+
+    /**
+     * Exibe um diálogo com o resultado detalhado de cada etapa de validação.
+     * Se todas as etapas passaram (sem ERRO), pergunta se deseja habilitar e persiste.
+     */
+    private void mostrarResultadoValidacao(ValidacaoNFeCompleta.Resultado resultado, NFeConfig cfg) {
+        // ── Monta o conteúdo do diálogo ──────────────────────────────────────
+        VBox conteudo = new VBox(6);
+        conteudo.setPadding(new Insets(4, 0, 8, 0));
+        conteudo.setPrefWidth(540);
+
+        for (ValidacaoNFeCompleta.ItemCheck item : resultado.itens) {
+            String icone;
+            String corFundo;
+            String corTexto;
+            switch (item.status) {
+                case OK    -> { icone = "✅"; corFundo = "#1b3a1e"; corTexto = "#81c784"; }
+                case AVISO -> { icone = "⚠️"; corFundo = "#3a2e0a"; corTexto = "#ffd54f"; }
+                default    -> { icone = "❌"; corFundo = "#3a0d0d"; corTexto = "#ef9a9a"; }
+            }
+
+            VBox card = new VBox(3);
+            card.setPadding(new Insets(8, 12, 8, 12));
+            card.setStyle("-fx-background-color: " + corFundo + "; -fx-background-radius: 6;");
+
+            Label titulo = new Label(icone + "  " + item.titulo);
+            titulo.setFont(Font.font("System", FontWeight.BOLD, 12));
+            titulo.setTextFill(Color.web(corTexto));
+
+            Label detalhe = new Label(item.detalhe);
+            detalhe.setFont(Font.font(11));
+            detalhe.setTextFill(Color.web("#c8ccd8"));
+            detalhe.setWrapText(true);
+
+            card.getChildren().addAll(titulo, detalhe);
+            conteudo.getChildren().add(card);
+        }
+
+        ScrollPane scroll = new ScrollPane(conteudo);
+        scroll.setFitToWidth(true);
+        scroll.setPrefHeight(380);
+        scroll.setStyle("-fx-background-color: transparent; -fx-background: transparent;");
+
+        // ── Diálogo ──────────────────────────────────────────────────────────
+        Dialog<ButtonType> dlg = new Dialog<>();
+        dlg.setTitle("Resultado da Validação NF-e");
+        dlg.setHeaderText(resultado.aprovado
+            ? "✅  Todas as validações foram aprovadas"
+            : "❌  Uma ou mais validações falharam");
+
+        dlg.getDialogPane().setContent(scroll);
+        dlg.getDialogPane().setStyle("-fx-background-color: #1a1c24;");
+        dlg.getDialogPane().lookup(".header-panel")
+            .setStyle("-fx-background-color: #1a1c24;");
+
+        // cabeçalho em branco
+        Label header = (Label) dlg.getDialogPane().lookup(".header-panel .label");
+        if (header != null) header.setTextFill(Color.web(resultado.aprovado ? "#81c784" : "#ef9a9a"));
+
+        if (resultado.aprovado) {
+            dlg.getDialogPane().getButtonTypes().addAll(
+                new ButtonType("🚀  Habilitar NF-e", ButtonBar.ButtonData.OK_DONE),
+                ButtonType.CANCEL
+            );
+        } else {
+            dlg.getDialogPane().getButtonTypes().add(ButtonType.CLOSE);
+            setStatus("❌ Validação falhou — corrija os erros e tente novamente.", "#f44336");
+        }
+
+        dlg.showAndWait().ifPresent(bt -> {
+            if (bt.getButtonData() == ButtonBar.ButtonData.OK_DONE) {
+                habilitarNFe(cfg);
+            }
+        });
+    }
+
+    /** Persiste a configuração e ativa habilita_nfe na empresa após aprovação. */
+    private void habilitarNFe(NFeConfig cfg) {
+        boolean cfgSalva = dao.salvar(cfg);
+        try {
+            Empresa emp = empresaDAO.carregar().orElse(new Empresa());
+            emp.setHabilitaNFe(true);
+            emp.setTipoEmissaoNFe(cfg.getAmbiente());
+            empresaDAO.salvar(emp);
+        } catch (Exception ex) {
+            // não bloqueia se empresa ainda não existir
+        }
+        if (cfgSalva) {
+            setStatus("✅ NF-e habilitada com sucesso!", "#4caf50");
+            Alerta.info("NF-e Habilitada! 🎉",
+                "Configuração salva e NF-e habilitada.\n\n" +
+                "O menu \"Notas Fiscais\" ficará disponível após fazer logout e entrar novamente.");
+        } else {
+            setStatus("⚠ Validações aprovadas, mas erro ao salvar configuração.", "#ffa726");
+            Alerta.aviso("Atenção", "As validações passaram mas houve erro ao salvar a configuração.\nTente salvar manualmente.");
+        }
+    }
+
+    private void testarConexao() {
+        NFeConfig cfg = construirCfg();
+        if (cfg.getCertificadoPath().isBlank()) {
+            Alerta.aviso("Atenção", "Selecione o certificado .pfx antes de testar.");
+            return;
+        }
+        setStatus("🔄 Testando conexão com SEFAZ...", "#90caf9");
+        NFeService service = new NFeService();
+        new Thread(() -> {
+            String resultado = service.testarConexao(cfg);
+            Platform.runLater(() -> {
+                boolean ok = resultado.startsWith("✅");
+                setStatus(resultado, ok ? "#4caf50" : "#ffa726");
+            });
+        }, "nfe-teste-conexao").start();
+    }
+
+    /** Monta um NFeConfig a partir dos campos do formulário atual */
+    private NFeConfig construirCfg() {
+        NFeConfig cfg = new NFeConfig();
+        cfg.setCertificadoPath(tfCertPath.getText().trim());
+        cfg.setCertificadoSenha(pfCertSenha.getText());
+        cfg.setCnpj(tfCnpj.getText().trim());
         cfg.setIe(tfIe.getText().trim());
         cfg.setRazaoSocial(tfRazao.getText().trim());
         cfg.setNomeFantasia(tfFantasia.getText().trim());
@@ -312,40 +516,12 @@ public class NFeConfiguracaoView {
         cfg.setCep(tfCep.getText().trim());
         cfg.setTelefone(tfTelefone.getText().trim());
         cfg.setRegimeTributario(cbRegime.getSelectionModel().getSelectedIndex() + 1);
-        try { cfg.setSerie(Integer.parseInt(tfSerie.getText().trim())); } catch (NumberFormatException e) { cfg.setSerie(1); }
-        try { cfg.setProximoNumero(Integer.parseInt(tfProximoNumero.getText().trim())); } catch (NumberFormatException e) { cfg.setProximoNumero(1); }
+        try { cfg.setSerie(Integer.parseInt(tfSerie.getText().trim())); }
+        catch (NumberFormatException e) { cfg.setSerie(1); }
+        try { cfg.setProximoNumero(Integer.parseInt(tfProximoNumero.getText().trim())); }
+        catch (NumberFormatException e) { cfg.setProximoNumero(1); }
         cfg.setAmbiente(cbAmbiente.getValue());
-
-        if (dao.salvar(cfg)) {
-            setStatus("✅ Configuração salva com sucesso!", "#4caf50");
-            Alerta.info("Sucesso", "Configuração NF-e salva com sucesso.");
-        } else {
-            setStatus("❌ Erro ao salvar configuração.", "#f44336");
-            Alerta.erro("Erro", "Não foi possível salvar a configuração NF-e.");
-        }
-    }
-
-    private void testarConexao() {
-        NFeConfig cfg = new NFeConfig();
-        cfg.setCertificadoPath(tfCertPath.getText().trim());
-        cfg.setCertificadoSenha(pfCertSenha.getText());
-        cfg.setAmbiente(cbAmbiente.getValue());
-
-        if (cfg.getCertificadoPath().isBlank()) {
-            Alerta.aviso("Atenção", "Selecione o certificado .pfx antes de testar.");
-            return;
-        }
-
-        setStatus("🔄 Testando conexão com SEFAZ BA...", "#90caf9");
-
-        NFeService service = new NFeService();
-        new Thread(() -> {
-            String resultado = service.testarConexao(cfg);
-            Platform.runLater(() -> {
-                boolean ok = resultado.startsWith("✅");
-                setStatus(resultado, ok ? "#4caf50" : "#ffa726");
-            });
-        }, "nfe-teste-conexao").start();
+        return cfg;
     }
 
     private void selecionarCertificado() {

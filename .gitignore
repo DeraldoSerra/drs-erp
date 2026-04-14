@@ -28,3 +28,6 @@ Thumbs.db
 installer/
 *.exe
 *.msi
+
+# Temporários
+_release_url.tmp
