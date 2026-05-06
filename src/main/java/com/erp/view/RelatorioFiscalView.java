@@ -1,8 +1,12 @@
 package com.erp.view;
 
+import com.erp.dao.VendaDAO;
+import com.erp.model.Venda;
 import com.erp.service.LivroVendasXmlService;
 import com.erp.service.SpedFiscalService;
 import com.erp.util.Alerta;
+import com.erp.util.RelatorioVendasPDF;
+import javafx.application.Platform;
 import javafx.concurrent.Task;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
@@ -14,6 +18,7 @@ import javafx.stage.Stage;
 import java.io.File;
 import java.nio.file.Files;
 import java.time.LocalDate;
+import java.util.List;
 
 public class RelatorioFiscalView {
 
@@ -66,7 +71,11 @@ public class RelatorioFiscalView {
         rdLivro.setToggleGroup(grupo);
         rdLivro.setStyle("-fx-text-fill: #e0e0e0;");
 
-        VBox rdBox = new VBox(10, rdSped, rdLivro);
+        RadioButton rdPDF  = new RadioButton("📄  Relatório PDF - Resumo de Vendas");
+        rdPDF.setToggleGroup(grupo);
+        rdPDF.setStyle("-fx-text-fill: #e0e0e0;");
+
+        VBox rdBox = new VBox(10, rdSped, rdLivro, rdPDF);
         rdBox.setPadding(new Insets(8, 0, 0, 0));
 
         // Progress indicator
@@ -94,8 +103,52 @@ public class RelatorioFiscalView {
                 return;
             }
 
+            boolean isPDF  = rdPDF.isSelected();
             boolean isSped = rdSped.isSelected();
-            String ext = isSped ? "*.txt" : "*.xml";
+
+            // ── OPÇÃO PDF ─────────────────────────────────────────────────────
+            if (isPDF) {
+                btnGerar.setDisable(true);
+                progressBar.setVisible(true);
+                progressBar.setProgress(ProgressIndicator.INDETERMINATE_PROGRESS);
+                lblStatus.setText("Gerando PDF...");
+
+                Task<String> taskPDF = new Task<>() {
+                    @Override
+                    protected String call() {
+                        List<Venda> vendas = new VendaDAO().listarPorPeriodo(inicio, fim);
+                        return RelatorioVendasPDF.gerar(inicio, fim, vendas);
+                    }
+                };
+                taskPDF.setOnSucceeded(ev -> Platform.runLater(() -> {
+                    btnGerar.setDisable(false);
+                    progressBar.setVisible(false);
+                    String caminho = taskPDF.getValue();
+                    if (caminho != null) {
+                        progressBar.setProgress(1.0);
+                        lblStatus.setText("✅ PDF gerado: " + caminho);
+                        lblStatus.setStyle("-fx-text-fill: #40c057;");
+                        try { java.awt.Desktop.getDesktop().open(new java.io.File(caminho)); }
+                        catch (Exception ex) { Alerta.info("PDF Gerado", "Arquivo salvo em:\n" + caminho); }
+                    } else {
+                        lblStatus.setText("❌ Erro ao gerar PDF");
+                        lblStatus.setStyle("-fx-text-fill: #fa5252;");
+                        Alerta.erro("Erro", "Não foi possível gerar o relatório PDF.");
+                    }
+                }));
+                taskPDF.setOnFailed(ev -> Platform.runLater(() -> {
+                    btnGerar.setDisable(false);
+                    progressBar.setVisible(false);
+                    lblStatus.setText("❌ Erro: " + taskPDF.getException().getMessage());
+                    lblStatus.setStyle("-fx-text-fill: #fa5252;");
+                    Alerta.erro("Erro", "Erro ao gerar PDF:\n" + taskPDF.getException().getMessage());
+                }));
+                new Thread(taskPDF).start();
+                return;
+            }
+
+            // ── OPÇÕES SPED / XML ─────────────────────────────────────────────
+            String ext  = isSped ? "*.txt" : "*.xml";
             String desc = isSped ? "Arquivo SPED EFD (*.txt)" : "Arquivo XML (*.xml)";
 
             FileChooser fc = new FileChooser();

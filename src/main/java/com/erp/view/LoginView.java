@@ -7,6 +7,7 @@ import com.erp.model.Loja;
 import com.erp.model.Usuario;
 import com.erp.util.Alerta;
 import com.erp.util.ConsultaReceitaWS;
+import com.erp.util.ResolutionUtil;
 import com.erp.util.Sessao;
 import com.erp.util.ValidadorFiscal;
 import javafx.animation.FadeTransition;
@@ -37,6 +38,7 @@ public class LoginView {
 
         // Inicializa banco antes de mostrar seleção de loja
         try { DatabaseConfig.inicializar(); } catch (Exception ignored) {}
+        try { new com.erp.dao.TokenUsuarioDAO().criarTabelaSeNecessario(); } catch (Exception ignored) {}
 
         mostrarSelecaoLoja();
 
@@ -46,6 +48,8 @@ public class LoginView {
         double h = Math.max(550, Math.min(800,  tela.getHeight() * 0.75));
         scene = new Scene(root, w, h);
         scene.getStylesheets().add(getClass().getResource("/css/style.css").toExternalForm());
+        // Aplica escala de fonte responsiva baseada na resolução da tela
+        root.setStyle(ResolutionUtil.estiloRaiz());
         return scene;
     }
 
@@ -58,8 +62,20 @@ public class LoginView {
         container.setMaxWidth(640);
         container.setPadding(new Insets(40));
 
-        Label titulo = new Label("🛒 DRS ERP");
+        javafx.scene.image.ImageView logoImg = new javafx.scene.image.ImageView();
+        try {
+            java.io.InputStream is = getClass().getResourceAsStream("/icon.png");
+            if (is != null) {
+                logoImg.setImage(new javafx.scene.image.Image(is));
+                logoImg.setFitWidth(48);
+                logoImg.setFitHeight(48);
+                logoImg.setPreserveRatio(true);
+                logoImg.setSmooth(true);
+            }
+        } catch (Exception ignored) {}
+        Label titulo = new Label("DRS ERP", logoImg);
         titulo.getStyleClass().add("login-titulo");
+        titulo.setGraphicTextGap(10);
 
         Label versaoLabel = new Label(com.erp.util.AppInfo.getVersaoCompleta());
         versaoLabel.setStyle("-fx-text-fill: #5a5d6e; -fx-font-size: 11px;");
@@ -532,9 +548,56 @@ public class LoginView {
     // Cadastro de Usuário
     // =========================================================
     private void abrirCadastroUsuario() {
+        // ── Exige token de cadastro ──────────────────────────────────────
+        Dialog<ButtonType> dlgToken = new Dialog<>();
+        dlgToken.setTitle("Token de Cadastro");
+        dlgToken.setHeaderText("Insira o token gerado pelo administrador");
+        dlgToken.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
+        dlgToken.getDialogPane().getStylesheets().add(
+                getClass().getResource("/css/style.css").toExternalForm());
+        dlgToken.getDialogPane().setPrefWidth(360);
+
+        VBox tokenBox = new VBox(12);
+        tokenBox.setPadding(new Insets(16));
+        Label lblInfo = new Label("🔑 Para cadastrar um usuário é necessário um token especial fornecido pelo dono do sistema.");
+        lblInfo.setWrapText(true);
+        lblInfo.setStyle("-fx-text-fill: #9e9e9e; -fx-font-size: 11.5px;");
+        TextField txtToken = new TextField();
+        txtToken.setPromptText("XXXXXX-XXXXXX-XXXX");
+        txtToken.setStyle("-fx-font-family: monospace; -fx-font-size: 14px;");
+        Label lblTokenStatus = new Label();
+        lblTokenStatus.setStyle("-fx-font-size: 11px;");
+        txtToken.textProperty().addListener((obs, o, nv) -> {
+            String t = nv.trim().toUpperCase();
+            if (t.length() >= 6) {
+                if (new com.erp.dao.TokenUsuarioDAO().tokenValido(t)) {
+                    lblTokenStatus.setText("✅ Token válido");
+                    lblTokenStatus.setStyle("-fx-text-fill: #4caf50; -fx-font-size: 11px;");
+                } else {
+                    lblTokenStatus.setText("❌ Token inválido ou já utilizado");
+                    lblTokenStatus.setStyle("-fx-text-fill: #f44336; -fx-font-size: 11px;");
+                }
+            } else {
+                lblTokenStatus.setText("");
+            }
+        });
+        tokenBox.getChildren().addAll(lblInfo, txtToken, lblTokenStatus);
+        dlgToken.getDialogPane().setContent(tokenBox);
+        javafx.application.Platform.runLater(txtToken::requestFocus);
+
+        java.util.Optional<ButtonType> resultToken = dlgToken.showAndWait();
+        if (resultToken.isEmpty() || resultToken.get() != ButtonType.OK) return;
+
+        String tokenUsado = txtToken.getText().trim().toUpperCase();
+        if (!new com.erp.dao.TokenUsuarioDAO().tokenValido(tokenUsado)) {
+            Alerta.erro("Token Inválido", "O token informado é inválido ou já foi utilizado.\nSolicite um novo token ao administrador.");
+            return;
+        }
+        // ─────────────────────────────────────────────────────────────────
+
         Dialog<ButtonType> dlg = new Dialog<>();
         dlg.setTitle("Cadastrar Usuário");
-        dlg.setHeaderText("Novo usuário do sistema");
+        dlg.setHeaderText("Novo usuário do sistema — Token: " + tokenUsado);
         dlg.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
         dlg.getDialogPane().getStylesheets().add(
                 getClass().getResource("/css/style.css").toExternalForm());
@@ -644,6 +707,8 @@ public class LoginView {
 
             boolean ok = new UsuarioDAO().salvar(novo, senha);
             if (ok) {
+                // Consome o token após cadastro bem-sucedido
+                new com.erp.dao.TokenUsuarioDAO().marcarUsado(tokenUsado);
                 String perfilNome = perfil.equals("OPERADOR") ? "Funcionário"
                         : perfil.equals("GERENTE") ? "Gerente" : "Administrador";
                 Alerta.info("Usuário Cadastrado",

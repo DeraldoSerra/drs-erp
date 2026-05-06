@@ -1,10 +1,13 @@
 package com.erp.view;
 
 import com.erp.dao.CaixaDAO;
+import com.erp.dao.VendaDAO;
 import com.erp.model.MovimentoCaixa;
 import com.erp.model.SessaoCaixa;
+import com.erp.model.Venda;
 import com.erp.util.Alerta;
 import com.erp.util.Formatador;
+import com.erp.util.RelatorioCaixaPDF;
 import com.erp.util.Sessao;
 import javafx.application.Platform;
 import javafx.beans.property.SimpleStringProperty;
@@ -16,6 +19,8 @@ import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
 import javafx.scene.shape.Circle;
 
+import java.awt.Desktop;
+import java.io.File;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Optional;
@@ -139,11 +144,15 @@ public class CaixaView {
         btnSuprimento.getStyleClass().add("btn-sucesso");
         btnSuprimento.setOnAction(e -> abrirDialogoMovimento("SUPRIMENTO"));
 
+        Button btnRelatorioPDF = new Button("📄  Relatório PDF");
+        btnRelatorioPDF.getStyleClass().add("btn-primario");
+        btnRelatorioPDF.setOnAction(e -> gerarRelatorioPDF());
+
         Button btnFechar = new Button("🔒  FECHAR CAIXA");
         btnFechar.getStyleClass().add("btn-perigo");
         btnFechar.setOnAction(e -> abrirDialogoFechamento());
 
-        header.getChildren().addAll(dot, statusLbl, lblInfo, spacer, btnSangria, btnSuprimento, btnFechar);
+        header.getChildren().addAll(dot, statusLbl, lblInfo, spacer, btnSangria, btnSuprimento, btnRelatorioPDF, btnFechar);
 
         // Totals row
         HBox totaisRow = criarTotaisRow();
@@ -238,6 +247,21 @@ public class CaixaView {
     }
 
     // ===== DIALOGS =====
+
+    private void gerarRelatorioPDF() {
+        SessaoCaixa totais = dao.calcularTotais(sessaoAtual.getId());
+        if (totais == null) totais = sessaoAtual;
+        String caminho = com.erp.util.RelatorioCaixaPDF.gerar(totais);
+        if (caminho != null) {
+            try {
+                java.awt.Desktop.getDesktop().open(new java.io.File(caminho));
+            } catch (Exception ex) {
+                Alerta.aviso("PDF Gerado", "Relatório salvo em:\n" + caminho);
+            }
+        } else {
+            Alerta.erro("Erro", "Não foi possível gerar o relatório PDF.");
+        }
+    }
 
     private void abrirDialogoMovimento(String tipo) {
         Dialog<ButtonType> dlg = new Dialog<>();
@@ -340,7 +364,30 @@ public class CaixaView {
                 double contado = Formatador.parseMoeda(txtContado.getText());
                 String obs = txtObs.getText().trim();
                 if (dao.fecharCaixa(sessaoAtual.getId(), contado, obs)) {
-                    Alerta.info("Caixa", "Caixa fechado com sucesso!");
+                    // Gerar PDF automaticamente ao fechar o caixa
+                    int idSessaoFechada = sessaoAtual.getId();
+                    Task<String> taskPdf = new Task<>() {
+                        @Override
+                        protected String call() {
+                            SessaoCaixa totais = dao.calcularTotais(idSessaoFechada);
+                            if (totais == null) return null;
+                            return RelatorioCaixaPDF.gerar(totais);
+                        }
+                    };
+                    taskPdf.setOnSucceeded(ev -> {
+                        String caminho = taskPdf.getValue();
+                        if (caminho != null) {
+                            Alerta.info("Caixa Fechado",
+                                    "Caixa fechado com sucesso!\nRelatório PDF gerado em:\n" + caminho);
+                            try {
+                                Desktop.getDesktop().open(new File(caminho));
+                            } catch (Exception ignored) {}
+                        } else {
+                            Alerta.info("Caixa", "Caixa fechado com sucesso!");
+                        }
+                    });
+                    taskPdf.setOnFailed(ev -> Alerta.info("Caixa", "Caixa fechado com sucesso!"));
+                    new Thread(taskPdf, "pdf-caixa").start();
                     carregarEstado();
                 } else {
                     Alerta.erro("Erro", "Não foi possível fechar o caixa.");

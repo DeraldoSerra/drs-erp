@@ -55,6 +55,76 @@ public class ProdutoView {
         return root;
     }
 
+    /** Modo somente leitura para OPERADOR: sem preço de custo, sem edição. */
+    public Region criarConsulta() {
+        VBox root = new VBox(16);
+        root.setPadding(new Insets(28));
+        root.setStyle("-fx-background-color: #1e2027;");
+
+        Label titulo = new Label("📦 Consulta de Produtos");
+        titulo.getStyleClass().add("titulo-modulo");
+        Label sub = new Label("Lista de produtos disponíveis para venda");
+        sub.getStyleClass().add("subtitulo-modulo");
+
+        TextField txtBusca = new TextField();
+        txtBusca.setPromptText("🔍 Buscar por nome, código ou código de barras...");
+        txtBusca.getStyleClass().add("campo-busca");
+        txtBusca.setPrefWidth(400);
+
+        // Tabela somente leitura
+        TableView<Produto> tv = new TableView<>();
+        tv.setPlaceholder(new Label("Nenhum produto encontrado."));
+        tv.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
+        tv.setEditable(false);
+
+        TableColumn<Produto, String> colCod = new TableColumn<>("Código");
+        colCod.setCellValueFactory(new PropertyValueFactory<>("codigo"));
+        colCod.setPrefWidth(110);
+
+        TableColumn<Produto, String> colNome = new TableColumn<>("Nome");
+        colNome.setCellValueFactory(new PropertyValueFactory<>("nome"));
+        colNome.setPrefWidth(280);
+
+        TableColumn<Produto, String> colCat = new TableColumn<>("Categoria");
+        colCat.setCellValueFactory(new PropertyValueFactory<>("categoriaNome"));
+        colCat.setPrefWidth(130);
+
+        TableColumn<Produto, String> colUn = new TableColumn<>("UN");
+        colUn.setCellValueFactory(new PropertyValueFactory<>("unidade"));
+        colUn.setPrefWidth(60);
+
+        TableColumn<Produto, String> colVenda = new TableColumn<>("Preço Venda");
+        colVenda.setCellValueFactory(c -> new SimpleStringProperty(
+                Formatador.formatarMoeda(c.getValue().getPrecoVenda())));
+        colVenda.setPrefWidth(120);
+        colVenda.setStyle("-fx-alignment: CENTER-RIGHT;");
+
+        tv.getColumns().addAll(colCod, colNome, colCat, colUn, colVenda);
+
+        // Carregar e filtrar
+        List<Produto> todos = dao.listarPorFiltro("", true);
+        javafx.collections.ObservableList<Produto> dados = FXCollections.observableArrayList(todos);
+        tv.setItems(dados);
+
+        txtBusca.textProperty().addListener((o, v, n) -> {
+            String filtro = n == null ? "" : n.toLowerCase();
+            tv.setItems(FXCollections.observableArrayList(
+                todos.stream().filter(p ->
+                    p.getNome().toLowerCase().contains(filtro) ||
+                    (p.getCodigo() != null && p.getCodigo().toLowerCase().contains(filtro)) ||
+                    (p.getCodigoBarras() != null && p.getCodigoBarras().toLowerCase().contains(filtro))
+                ).toList()
+            ));
+        });
+
+        HBox acoes = new HBox(12, txtBusca);
+        acoes.setAlignment(Pos.CENTER_LEFT);
+
+        VBox.setVgrow(tv, Priority.ALWAYS);
+        root.getChildren().addAll(new VBox(4, titulo, sub), acoes, tv);
+        return root;
+    }
+
     @SuppressWarnings("unchecked")
     private TableView<Produto> criarTabela() {
         TableView<Produto> tv = new TableView<>();

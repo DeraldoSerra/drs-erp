@@ -18,6 +18,20 @@ public class VendaDAO {
     private static final Logger log = LoggerFactory.getLogger(VendaDAO.class);
     private final ProdutoDAO produtoDAO = new ProdutoDAO();
 
+    public VendaDAO() {
+        migrarColunas();
+    }
+
+    /** Garante que a coluna reembolsado exista na tabela vendas (compatibilidade com instâncias antigas). */
+    private void migrarColunas() {
+        try (Connection conn = DatabaseConfig.getConexao();
+             Statement st = conn.createStatement()) {
+            st.execute("ALTER TABLE vendas ADD COLUMN IF NOT EXISTS reembolsado BOOLEAN DEFAULT FALSE");
+        } catch (Exception e) {
+            log.warn("Migração de colunas: {}", e.getMessage());
+        }
+    }
+
     public boolean salvar(Venda v) {
         String sqlVenda = """
             INSERT INTO vendas (numero, cliente_id, usuario_id, data_venda, subtotal, desconto,
@@ -82,20 +96,20 @@ public class VendaDAO {
         }
     }
 
-    public boolean cancelar(int vendaId, int usuarioId) {
+    public boolean cancelar(int vendaId, int usuarioId, String motivo) {
         int lojaId = Sessao.getInstance().getLojaId();
-        String sql = "UPDATE vendas SET status='CANCELADA' WHERE id=? AND loja_id=?";
+        String sql = "UPDATE vendas SET status='CANCELADA', observacoes=? WHERE id=? AND loja_id=?";
         try (Connection conn = DatabaseConfig.getConexao()) {
             conn.setAutoCommit(false);
             try {
-                // Estornar estoque
                 List<ItemVenda> itens = listarItens(vendaId);
                 for (ItemVenda item : itens) {
                     estornarEstoque(conn, item.getProdutoId(), item.getQuantidade(), vendaId, usuarioId);
                 }
                 try (PreparedStatement ps = conn.prepareStatement(sql)) {
-                    ps.setInt(1, vendaId);
-                    ps.setInt(2, lojaId);
+                    ps.setString(1, motivo != null ? motivo : "");
+                    ps.setInt(2, vendaId);
+                    ps.setInt(3, lojaId);
                     ps.executeUpdate();
                 }
                 conn.commit();
@@ -110,7 +124,12 @@ public class VendaDAO {
         }
     }
 
-    public List<Venda> listarPorPeriodo(LocalDate inicio, LocalDate fim) {
+    /** Compatibilidade retroativa sem motivo. */
+    public boolean cancelar(int vendaId, int usuarioId) {
+        return cancelar(vendaId, usuarioId, "");
+    }
+
+    public List<Venda> listarCanceladas(LocalDate inicio, LocalDate fim) {
         int lojaId = com.erp.util.Sessao.getInstance().getLojaId();
         List<Venda> lista = new ArrayList<>();
         String sql = """
@@ -118,17 +137,46 @@ public class VendaDAO {
             FROM vendas v
             LEFT JOIN clientes c ON c.id = v.cliente_id
             LEFT JOIN usuarios u ON u.id = v.usuario_id
-            WHERE DATE(v.data_venda) BETWEEN ? AND ? AND v.loja_id = ?
+            WHERE v.status = 'CANCELADA'
+              AND v.data_venda >= ? AND v.data_venda < ? AND v.loja_id = ?
             ORDER BY v.data_venda DESC
             """;
         try (Connection conn = DatabaseConfig.getConexao();
              PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setDate(1, Date.valueOf(inicio));
-            ps.setDate(2, Date.valueOf(fim));
+            ps.setTimestamp(1, Timestamp.valueOf(inicio.atStartOfDay()));
+            ps.setTimestamp(2, Timestamp.valueOf(fim.plusDays(1).atStartOfDay()));
             ps.setInt(3, lojaId);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) lista.add(mapear(rs));
             }
+        } catch (SQLException e) {
+            log.error("Erro ao listar vendas canceladas", e);
+        }
+        return lista;
+    }
+
+    public List<Venda> listarPorPeriodo(LocalDate inicio, LocalDate fim) {
+        int lojaId = com.erp.util.Sessao.getInstance().getLojaId();
+        List<Venda> lista = new ArrayList<>();
+        // Usa range de TIMESTAMP para evitar problemas de fuso horário com setDate/JDBC
+        String sql = """
+            SELECT v.*, c.nome AS cliente_nome, u.nome AS usuario_nome
+            FROM vendas v
+            LEFT JOIN clientes c ON c.id = v.cliente_id
+            LEFT JOIN usuarios u ON u.id = v.usuario_id
+            WHERE v.data_venda >= ? AND v.data_venda < ? AND v.loja_id = ?
+            ORDER BY v.data_venda DESC
+            """;
+        try (Connection conn = DatabaseConfig.getConexao();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setTimestamp(1, Timestamp.valueOf(inicio.atStartOfDay()));
+            ps.setTimestamp(2, Timestamp.valueOf(fim.plusDays(1).atStartOfDay()));
+            ps.setInt(3, lojaId);
+            log.info("Buscando vendas: {} a {} para loja {}", inicio, fim, lojaId);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) lista.add(mapear(rs));
+            }
+            log.info("Vendas encontradas: {}", lista.size());
         } catch (SQLException e) {
             log.error("Erro ao listar vendas", e);
         }
@@ -384,6 +432,64 @@ public class VendaDAO {
         return 0;
     }
 
+    public List<Venda> listarVendasDaSessao(int sessaoId) {
+        int lojaId = Sessao.getInstance().getLojaId();
+        List<Venda> lista = new ArrayList<>();
+        // Busca todas as vendas cujo data_venda está dentro do período da sessão
+        String sql = """
+            SELECT v.*, c.nome AS cliente_nome, u.nome AS usuario_nome
+            FROM vendas v
+            LEFT JOIN clientes c ON c.id = v.cliente_id
+            LEFT JOIN usuarios u ON u.id = v.usuario_id
+            WHERE v.loja_id = ?
+              AND v.data_venda >= (SELECT abertura FROM sessoes_caixa WHERE id = ?)
+              AND (v.data_venda <= (SELECT COALESCE(fechamento, NOW()) FROM sessoes_caixa WHERE id = ?))
+            ORDER BY v.data_venda ASC
+            """;
+        try (Connection conn = DatabaseConfig.getConexao();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, lojaId);
+            ps.setInt(2, sessaoId);
+            ps.setInt(3, sessaoId);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    Venda v = mapear(rs);
+                    v.setItens(listarItens(v.getId()));
+                    lista.add(v);
+                }
+            }
+        } catch (SQLException e) {
+            log.error("Erro ao listar vendas da sessão", e);
+        }
+        return lista;
+    }
+
+    public Optional<Venda> buscarPorNumero(String numero) {
+        int lojaId = Sessao.getInstance().getLojaId();
+        String sql = """
+            SELECT v.*, c.nome AS cliente_nome, u.nome AS usuario_nome
+            FROM vendas v
+            LEFT JOIN clientes c ON c.id = v.cliente_id
+            LEFT JOIN usuarios u ON u.id = v.usuario_id
+            WHERE v.numero = ? AND v.loja_id = ?
+            """;
+        try (Connection conn = DatabaseConfig.getConexao();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, numero);
+            ps.setInt(2, lojaId);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    Venda v = mapear(rs);
+                    v.setItens(listarItens(v.getId()));
+                    return Optional.of(v);
+                }
+            }
+        } catch (SQLException e) {
+            log.error("Erro ao buscar venda por número", e);
+        }
+        return Optional.empty();
+    }
+
     private Venda mapear(ResultSet rs) throws SQLException {
         Venda v = new Venda();
         v.setId(rs.getInt("id"));
@@ -394,15 +500,36 @@ public class VendaDAO {
         v.setUsuarioNome(rs.getString("usuario_nome"));
         Timestamp dt = rs.getTimestamp("data_venda");
         if (dt != null) v.setDataVenda(dt.toLocalDateTime());
-        v.setSubtotal(rs.getDouble("subtotal"));
-        v.setDesconto(rs.getDouble("desconto"));
-        v.setAcrescimo(rs.getDouble("acrescimo"));
-        v.setTotal(rs.getDouble("total"));
         v.setFormaPagamento(rs.getString("forma_pagamento"));
-        v.setValorPago(rs.getDouble("valor_pago"));
-        v.setTroco(rs.getDouble("troco"));
         v.setStatus(rs.getString("status"));
         v.setObservacoes(rs.getString("observacoes"));
+
+        // Setters abaixo chamam recalcular() internamente — defini-los primeiro;
+        // depois sobrescrevemos subtotal/total/troco com os valores reais do banco.
+        v.setDesconto(rs.getDouble("desconto"));
+        v.setAcrescimo(rs.getDouble("acrescimo"));
+        v.setValorPago(rs.getDouble("valor_pago"));
+
+        // Restaura os valores corretos do banco (recalcular() sobrescreve com itens vazios).
+        v.setSubtotal(rs.getDouble("subtotal"));
+        v.setTotal(rs.getDouble("total"));
+        v.setTroco(rs.getDouble("troco"));
+
+        try { v.setReembolsado(rs.getBoolean("reembolsado")); } catch (SQLException ignored) {}
         return v;
+    }
+
+    /** Marca uma venda como reembolsada no banco. */
+    public boolean marcarReembolsado(int vendaId) {
+        String sql = "UPDATE vendas SET reembolsado=TRUE WHERE id=?";
+        try (Connection conn = DatabaseConfig.getConexao();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, vendaId);
+            ps.executeUpdate();
+            return true;
+        } catch (SQLException e) {
+            log.error("Erro ao marcar venda como reembolsada", e);
+            return false;
+        }
     }
 }

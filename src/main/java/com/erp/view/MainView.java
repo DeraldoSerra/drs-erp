@@ -1,5 +1,6 @@
 package com.erp.view;
 
+import com.erp.util.ResolutionUtil;
 import com.erp.util.Sessao;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
@@ -29,6 +30,8 @@ public class MainView {
         javafx.geometry.Rectangle2D tela = javafx.stage.Screen.getPrimary().getVisualBounds();
         Scene scene = new Scene(root, tela.getWidth() * 0.9, tela.getHeight() * 0.9);
         scene.getStylesheets().add(getClass().getResource("/css/style.css").toExternalForm());
+        // Aplica escala de fonte responsiva baseada na resolução da tela
+        root.setStyle(ResolutionUtil.estiloRaiz());
 
         // Maximiza a janela principal
         stage.setMaximized(true);
@@ -43,21 +46,33 @@ public class MainView {
         VBox sidebar = new VBox();
         sidebar.getStyleClass().add("sidebar");
 
-        // Largura proporcional: 15% da tela, mínimo 200px, máximo 260px
+        // Largura proporcional: 15% da tela, escalada pelo ResolutionUtil
         double telW = javafx.stage.Screen.getPrimary().getVisualBounds().getWidth();
-        double sideW = Math.max(200, Math.min(260, telW * 0.15));
+        double sideW = Math.max(ResolutionUtil.px(200), Math.min(ResolutionUtil.px(260), telW * 0.15));
         sidebar.setPrefWidth(sideW);
         sidebar.setMinWidth(sideW);
         sidebar.setMaxWidth(sideW);
 
-        Label logo = new Label("🛒 DRS ERP");
+        javafx.scene.image.ImageView logoImg = new javafx.scene.image.ImageView();
+        try {
+            java.io.InputStream is = getClass().getResourceAsStream("/icon.png");
+            if (is != null) {
+                logoImg.setImage(new javafx.scene.image.Image(is));
+                logoImg.setFitWidth(28);
+                logoImg.setFitHeight(28);
+                logoImg.setPreserveRatio(true);
+                logoImg.setSmooth(true);
+            }
+        } catch (Exception ignored) {}
+        Label logo = new Label("DRS ERP", logoImg);
         logo.getStyleClass().add("sidebar-logo");
+        logo.setGraphicTextGap(8);
 
         Label versaoSidebar = new Label(com.erp.util.AppInfo.getVersaoCompleta());
-        versaoSidebar.setStyle("-fx-text-fill: #3d4059; -fx-font-size: 10px; -fx-padding: 0 20 8 20;");
+        versaoSidebar.setStyle("-fx-text-fill: #3d4059; " + ResolutionUtil.fs(10) + " -fx-padding: 0 20 8 20;");
 
         Label usuario = new Label("👤 " + Sessao.getInstance().getUsuario().getNome());
-        usuario.setStyle("-fx-text-fill: #5a5d6e; -fx-font-size: 11px; -fx-padding: 0 20 12 20;");
+        usuario.setStyle("-fx-text-fill: #5a5d6e; " + ResolutionUtil.fs(11) + " -fx-padding: 0 20 12 20;");
 
         Separator sep = new Separator();
         sep.setPadding(new Insets(4, 0, 4, 0));
@@ -79,11 +94,13 @@ public class MainView {
         Button btnCaixa        = menuBtn("🏦  Caixa");
         Button btnRelFiscal    = menuBtn("📊  Relatórios Fiscais");
         Button btnLojas        = menuBtn("🏪  Lojas");
+        Button btnImpressora   = menuBtn("🖨️   Impressora");
 
         // Verificar perfil do usuário logado
         com.erp.model.Usuario usuarioLogado = Sessao.getInstance().getUsuario();
         boolean isAdmin    = usuarioLogado != null && "ADMIN".equals(usuarioLogado.getPerfil());
         boolean isGerente  = usuarioLogado != null && (isAdmin || "GERENTE".equals(usuarioLogado.getPerfil()));
+        boolean isOperador = usuarioLogado != null && !isAdmin && !isGerente;
 
         // Verificar se a empresa habilitou NF-e
         boolean nfeHabilitado = false;
@@ -101,7 +118,9 @@ public class MainView {
         btnVendas      .setOnAction(e -> navegar(new VendaView().criar(),           btnVendas));
         btnOrcamentos  .setOnAction(e -> navegar(new OrcamentoView().criar(),       btnOrcamentos));
         btnClientes    .setOnAction(e -> navegar(new ClienteView().criar(),         btnClientes));
-        btnProdutos    .setOnAction(e -> navegar(new ProdutoView().criar(),         btnProdutos));
+        btnProdutos    .setOnAction(e -> navegar(
+                isOperador ? new ProdutoView().criarConsulta() : new ProdutoView().criar(),
+                btnProdutos));
         btnFornecedores.setOnAction(e -> navegar(new FornecedorView().criar(),      btnFornecedores));
         btnEstoque     .setOnAction(e -> navegar(new EstoqueView().criar(),         btnEstoque));
         btnFinanceiro  .setOnAction(e -> navegar(new FinanceiroView().criar(),      btnFinanceiro));
@@ -109,10 +128,11 @@ public class MainView {
         btnCaixa       .setOnAction(e -> navegar(new CaixaView().criar(),           btnCaixa));
         btnRelatorios  .setOnAction(e -> navegar(new RelatorioView().criar(),       btnRelatorios));
         btnRelFiscal   .setOnAction(e -> navegar(new RelatorioFiscalView().criar(), btnRelFiscal));
-        btnEmpresa     .setOnAction(e -> navegar(new EmpresaView().criar(),         btnEmpresa));
-        btnConfigNFe   .setOnAction(e -> navegar(new NFeConfiguracaoView().criar(), btnConfigNFe));
-        btnNotasFiscais.setOnAction(e -> navegar(new NFeView().criar(),             btnNotasFiscais));
-        btnLojas       .setOnAction(e -> navegar(new LojaView().criar(),            btnLojas));
+        btnEmpresa     .setOnAction(e -> navegar(new EmpresaView().criar(),                       btnEmpresa));
+        btnConfigNFe   .setOnAction(e -> navegar(new NFeConfiguracaoView().criar(),               btnConfigNFe));
+        btnNotasFiscais.setOnAction(e -> navegar(new NFeView().criar(),                           btnNotasFiscais));
+        btnLojas       .setOnAction(e -> navegar(new LojaView().criar(),                          btnLojas));
+        btnImpressora  .setOnAction(e -> navegar(new ConfiguracaoImpressoraView().criar(),        btnImpressora));
 
         Label secPrincipal  = secLabel("PRINCIPAL");
         Label secCadastros  = secLabel("CADASTROS");
@@ -143,6 +163,22 @@ public class MainView {
         // Seção CONFIGURAÇÕES só aparece para admins
         secConfig.setVisible(isAdmin); secConfig.setManaged(isAdmin);
 
+        // Impressora: GERENTE ou ADMIN
+        btnImpressora  .setVisible(isGerente); btnImpressora  .setManaged(isGerente);
+
+        // OPERADOR: apenas Vendas, Produtos (consulta) e Caixa
+        boolean naoOperador = !isOperador;
+        btnDashboard   .setVisible(naoOperador); btnDashboard   .setManaged(naoOperador);
+        btnOrcamentos  .setVisible(naoOperador); btnOrcamentos  .setManaged(naoOperador);
+        btnClientes    .setVisible(naoOperador); btnClientes    .setManaged(naoOperador);
+        btnFornecedores.setVisible(naoOperador); btnFornecedores.setManaged(naoOperador);
+        btnEstoque     .setVisible(naoOperador); btnEstoque     .setManaged(naoOperador);
+        btnRelatorios  .setVisible(naoOperador); btnRelatorios  .setManaged(naoOperador);
+        // Seções de menu: ocultar labels que ficam sem conteúdo para OPERADOR
+        secPrincipal   .setVisible(naoOperador); secPrincipal   .setManaged(naoOperador);
+        secCadastros   .setVisible(naoOperador); secCadastros   .setManaged(naoOperador);
+        secRelLabel    .setVisible(naoOperador); secRelLabel    .setManaged(naoOperador);
+
         Region spacer = new Region();
         VBox.setVgrow(spacer, Priority.ALWAYS);
 
@@ -172,11 +208,17 @@ public class MainView {
                 secCadastros, btnClientes, btnProdutos, btnFornecedores,
                 secGestao, btnEstoque, btnFinanceiro, btnRH, btnCaixa,
                 secRelLabel, btnRelatorios, btnRelFiscal,
-                secConfig, btnEmpresa, btnConfigNFe, btnNotasFiscais, btnLojas,
+                secConfig, btnEmpresa, btnConfigNFe, btnNotasFiscais, btnLojas, btnImpressora,
                 spacer, btnAtualizacao, btnSair
         );
 
-        ativarBotao(btnDashboard);
+        // Para OPERADOR, iniciar diretamente na tela de Vendas
+        if (isOperador) {
+            root.setCenter(new VendaView().criar());
+            ativarBotao(btnVendas);
+        } else {
+            ativarBotao(btnDashboard);
+        }
 
         // Envolve sidebar em ScrollPane para telas pequenas
         javafx.scene.control.ScrollPane scroll = new javafx.scene.control.ScrollPane(sidebar);

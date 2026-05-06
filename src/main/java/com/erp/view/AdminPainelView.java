@@ -32,7 +32,7 @@ public class AdminPainelView {
         titulo.setStyle("-fx-font-size: 20px; -fx-font-weight: bold; -fx-text-fill: #4dabf7;");
 
         TabPane tabs = new TabPane();
-        tabs.getTabs().addAll(criarTabLojas(), criarTabEmpresa(), criarTabTokens());
+        tabs.getTabs().addAll(criarTabLojas(), criarTabEmpresa(), criarTabTokens(), criarTabTokensUsuario(), criarTabManutencao());
         tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
         VBox.setVgrow(tabs, Priority.ALWAYS);
 
@@ -485,7 +485,429 @@ public class AdminPainelView {
         stage.show();
     }
 
+    // ==================== ABA MANUTENÇÃO ====================
+
+    private Tab criarTabManutencao() {
+        Tab tab = new Tab("🔧 Manutenção");
+
+        ScrollPane scroll = new ScrollPane();
+        scroll.setFitToWidth(true);
+        scroll.setStyle("-fx-background: #1e2027; -fx-background-color: #1e2027;");
+
+        VBox content = new VBox(20);
+        content.setPadding(new Insets(20));
+        content.setStyle("-fx-background-color: #1e2027;");
+
+        Label lblTitulo = new Label("⚠️ Área de Manutenção");
+        lblTitulo.setStyle("-fx-font-size: 16px; -fx-font-weight: bold; -fx-text-fill: #ff6b6b;");
+        Label lblAviso = new Label("Operações PERMANENTES — não podem ser desfeitas. Use com cautela.");
+        lblAviso.setStyle("-fx-text-fill: #ffa94d; -fx-font-size: 12px;");
+
+        // Seleção de loja
+        ComboBox<Loja> cbLoja = new ComboBox<>();
+        cbLoja.setMaxWidth(340);
+        cbLoja.setPromptText("Escolha uma loja...");
+        cbLoja.setItems(javafx.collections.FXCollections.observableArrayList(new LojaDAO().listarTodas()));
+        cbLoja.setCellFactory(lv -> new javafx.scene.control.ListCell<>() {
+            @Override protected void updateItem(Loja l, boolean empty) {
+                super.updateItem(l, empty);
+                setText(empty || l == null ? null : "[" + l.getId() + "] " + l.getNome());
+            }
+        });
+        cbLoja.setButtonCell(new javafx.scene.control.ListCell<>() {
+            @Override protected void updateItem(Loja l, boolean empty) {
+                super.updateItem(l, empty);
+                setText(empty || l == null ? null : "[" + l.getId() + "] " + l.getNome());
+            }
+        });
+
+        Label lblStats = new Label("Selecione uma loja para ver os dados.");
+        lblStats.setStyle("-fx-text-fill: #adb5bd; -fx-font-size: 12px;");
+        lblStats.setWrapText(true);
+        VBox statsBox = new VBox(8, lblStats);
+        statsBox.setStyle("-fx-background-color: #2c2f36; -fx-padding: 14; -fx-border-color: #495057; -fx-border-radius: 6; -fx-background-radius: 6;");
+
+        // Helper: confirmar com nome da loja
+        java.util.function.BiFunction<Loja, String, Boolean> confirmarComNome = (loja, acao) -> {
+            if (!Alerta.confirmar("⚠️ " + acao, "Executar:\n  " + acao + "\n\nLoja: \"" + loja.getNome() + "\"\n\nIRREVERSÍVEL. Continuar?")) return false;
+            javafx.scene.control.TextInputDialog dlg2 = new javafx.scene.control.TextInputDialog();
+            dlg2.setTitle("Confirmação Final");
+            dlg2.setHeaderText("⛔ Digite o nome da loja para confirmar");
+            dlg2.setContentText("Nome: \"" + loja.getNome() + "\"");
+            try { dlg2.getDialogPane().getStylesheets().add(getClass().getResource("/css/style.css").toExternalForm()); } catch (Exception ignored) {}
+            java.util.Optional<String> r2 = dlg2.showAndWait();
+            if (r2.isEmpty() || !r2.get().trim().equalsIgnoreCase(loja.getNome().trim())) {
+                Alerta.aviso("Cancelado", "Nome não confere. Operação cancelada.");
+                return false;
+            }
+            return true;
+        };
+
+        // Atualizar estatísticas
+        Runnable atualizarStats = () -> {
+            Loja loja = cbLoja.getValue();
+            if (loja == null) { lblStats.setText("Selecione uma loja."); return; }
+            try (java.sql.Connection conn = com.erp.config.DatabaseConfig.getConexao()) {
+                long v = 0, i = 0, s = 0, f = 0, p = 0;
+                try (java.sql.PreparedStatement ps = conn.prepareStatement("SELECT COUNT(*) FROM vendas WHERE loja_id=?")) { ps.setInt(1, loja.getId()); java.sql.ResultSet rs = ps.executeQuery(); if (rs.next()) v = rs.getLong(1); }
+                try (java.sql.PreparedStatement ps = conn.prepareStatement("SELECT COUNT(*) FROM itens_venda iv JOIN vendas vv ON iv.venda_id=vv.id WHERE vv.loja_id=?")) { ps.setInt(1, loja.getId()); java.sql.ResultSet rs = ps.executeQuery(); if (rs.next()) i = rs.getLong(1); }
+                try (java.sql.PreparedStatement ps = conn.prepareStatement("SELECT COUNT(*) FROM sessoes_caixa WHERE loja_id=?")) { ps.setInt(1, loja.getId()); java.sql.ResultSet rs = ps.executeQuery(); if (rs.next()) s = rs.getLong(1); } catch (Exception ignored) {}
+                try (java.sql.PreparedStatement ps = conn.prepareStatement("SELECT COUNT(*) FROM produtos WHERE loja_id=?")) { ps.setInt(1, loja.getId()); java.sql.ResultSet rs = ps.executeQuery(); if (rs.next()) p = rs.getLong(1); } catch (Exception ignored) {}
+                try (java.sql.PreparedStatement ps = conn.prepareStatement("SELECT (SELECT COUNT(*) FROM contas_pagar WHERE loja_id=?) + (SELECT COUNT(*) FROM contas_receber WHERE loja_id=?)")) { ps.setInt(1, loja.getId()); ps.setInt(2, loja.getId()); java.sql.ResultSet rs = ps.executeQuery(); if (rs.next()) f = rs.getLong(1); } catch (Exception ignored) {}
+                final String txt = String.format("📊 %s (ID %d)\n  Vendas: %d  |  Itens vendidos: %d  |  Sessões de caixa: %d\n  Produtos: %d  |  Contas (pagar+receber): %d", loja.getNome(), loja.getId(), v, i, s, p, f);
+                javafx.application.Platform.runLater(() -> lblStats.setText(txt));
+            } catch (Exception e) { javafx.application.Platform.runLater(() -> lblStats.setText("Erro: " + e.getMessage())); }
+        };
+
+        cbLoja.setOnAction(e -> atualizarStats.run());
+
+        // ---- BLOCO: Vendas e Caixa ----
+        VBox blocoVendas = criarBlocoManutencao("🛒 Vendas e Caixa", "#c92a2a");
+        Button btnResetVendas = criarBtnAcao("🗑️ Resetar Vendas e Caixa", "#c92a2a");
+        btnResetVendas.setOnAction(e -> {
+            Loja loja = cbLoja.getValue();
+            if (loja == null) { Alerta.aviso("Atenção", "Selecione uma loja."); return; }
+            if (!confirmarComNome.apply(loja, "Resetar Vendas e Caixa")) return;
+            try (java.sql.Connection conn = com.erp.config.DatabaseConfig.getConexao()) {
+                conn.setAutoCommit(false);
+                try {
+                    execSql(conn, "DELETE FROM itens_venda WHERE venda_id IN (SELECT id FROM vendas WHERE loja_id=?)", loja.getId());
+                    try { execSql(conn, "DELETE FROM vendas_canceladas WHERE loja_id=?", loja.getId()); } catch (Exception ignored) {}
+                    execSql(conn, "DELETE FROM vendas WHERE loja_id=?", loja.getId());
+                    try { execSql(conn, "DELETE FROM sessoes_caixa WHERE loja_id=?", loja.getId()); } catch (Exception ignored) {}
+                    conn.commit();
+                    javafx.application.Platform.runLater(() -> { Alerta.info("✅ Concluído", "Vendas e caixa apagados. Dashboard agora mostra zero."); atualizarStats.run(); });
+                } catch (Exception ex) { conn.rollback(); Alerta.erro("Erro", ex.getMessage()); }
+            } catch (Exception ex) { Alerta.erro("Erro", ex.getMessage()); }
+        });
+        blocoVendas.getChildren().addAll(labelDescricao("Apaga todas as vendas, itens e sessões de caixa. O dashboard volta a zero."), btnResetVendas);
+
+        // ---- BLOCO: Estoque ----
+        VBox blocoEstoque = criarBlocoManutencao("📦 Estoque", "#d9480f");
+        Button btnResetMovEstoque = criarBtnAcao("🗑️ Limpar Histórico de Movimentações", "#d9480f");
+        btnResetMovEstoque.setOnAction(e -> {
+            Loja loja = cbLoja.getValue();
+            if (loja == null) { Alerta.aviso("Atenção", "Selecione uma loja."); return; }
+            if (!confirmarComNome.apply(loja, "Limpar Histórico de Movimentações")) return;
+            try (java.sql.Connection conn = com.erp.config.DatabaseConfig.getConexao()) {
+                execSql(conn, "DELETE FROM movimentacoes_estoque WHERE loja_id=?", loja.getId());
+                javafx.application.Platform.runLater(() -> { Alerta.info("✅ Concluído", "Histórico limpo. Saldos atuais preservados."); atualizarStats.run(); });
+            } catch (Exception ex) { Alerta.erro("Erro", ex.getMessage()); }
+        });
+        Button btnZerarEstoque = criarBtnAcao("⚠️ Zerar Saldo de Estoque", "#c92a2a");
+        btnZerarEstoque.setOnAction(e -> {
+            Loja loja = cbLoja.getValue();
+            if (loja == null) { Alerta.aviso("Atenção", "Selecione uma loja."); return; }
+            if (!confirmarComNome.apply(loja, "Zerar Saldo de Estoque")) return;
+            try (java.sql.Connection conn = com.erp.config.DatabaseConfig.getConexao()) {
+                execSql(conn, "UPDATE produtos SET estoque_atual=0 WHERE loja_id=?", loja.getId());
+                javafx.application.Platform.runLater(() -> Alerta.info("✅ Concluído", "Estoque de todos os produtos zerado."));
+            } catch (Exception ex) { Alerta.erro("Erro", ex.getMessage()); }
+        });
+        blocoEstoque.getChildren().addAll(
+            labelDescricao("Apaga apenas o histórico de entradas/saídas, sem alterar o saldo atual."), btnResetMovEstoque,
+            labelDescricao("Zera o saldo atual (estoque_atual=0) de todos os produtos da loja."), btnZerarEstoque
+        );
+
+        // ---- BLOCO: Financeiro ----
+        VBox blocoFin = criarBlocoManutencao("💰 Financeiro", "#862e9c");
+        Button btnResetFin = criarBtnAcao("🗑️ Resetar Contas a Pagar e Receber", "#862e9c");
+        btnResetFin.setOnAction(e -> {
+            Loja loja = cbLoja.getValue();
+            if (loja == null) { Alerta.aviso("Atenção", "Selecione uma loja."); return; }
+            if (!confirmarComNome.apply(loja, "Resetar Financeiro")) return;
+            try (java.sql.Connection conn = com.erp.config.DatabaseConfig.getConexao()) {
+                conn.setAutoCommit(false);
+                try {
+                    execSql(conn, "DELETE FROM contas_pagar WHERE loja_id=?", loja.getId());
+                    execSql(conn, "DELETE FROM contas_receber WHERE loja_id=?", loja.getId());
+                    conn.commit();
+                    javafx.application.Platform.runLater(() -> { Alerta.info("✅ Concluído", "Contas a pagar e receber apagadas."); atualizarStats.run(); });
+                } catch (Exception ex) { conn.rollback(); Alerta.erro("Erro", ex.getMessage()); }
+            } catch (Exception ex) { Alerta.erro("Erro", ex.getMessage()); }
+        });
+        blocoFin.getChildren().addAll(labelDescricao("Apaga todas as contas a pagar e a receber da loja."), btnResetFin);
+
+        // ---- BLOCO: Cadastros ----
+        VBox blocoCad = criarBlocoManutencao("👥 Cadastros", "#1864ab");
+        Button btnResetClientes = criarBtnAcao("🗑️ Apagar Clientes sem Histórico", "#1864ab");
+        btnResetClientes.setOnAction(e -> {
+            Loja loja = cbLoja.getValue();
+            if (loja == null) { Alerta.aviso("Atenção", "Selecione uma loja."); return; }
+            if (!confirmarComNome.apply(loja, "Apagar Clientes sem Histórico")) return;
+            try (java.sql.Connection conn = com.erp.config.DatabaseConfig.getConexao()) {
+                execSql(conn, "DELETE FROM clientes WHERE id NOT IN (SELECT DISTINCT COALESCE(cliente_id,-1) FROM vendas WHERE cliente_id IS NOT NULL)");
+                javafx.application.Platform.runLater(() -> Alerta.info("✅ Concluído", "Clientes sem vínculo com vendas foram removidos."));
+            } catch (Exception ex) { Alerta.erro("Erro", ex.getMessage()); }
+        });
+        Button btnResetForn = criarBtnAcao("🗑️ Apagar Todos os Fornecedores", "#1864ab");
+        btnResetForn.setOnAction(e -> {
+            Loja loja = cbLoja.getValue();
+            if (loja == null) { Alerta.aviso("Atenção", "Selecione uma loja."); return; }
+            if (!confirmarComNome.apply(loja, "Apagar Todos os Fornecedores")) return;
+            try (java.sql.Connection conn = com.erp.config.DatabaseConfig.getConexao()) {
+                execSql(conn, "DELETE FROM fornecedores");
+                javafx.application.Platform.runLater(() -> Alerta.info("✅ Concluído", "Todos os fornecedores removidos."));
+            } catch (Exception ex) { Alerta.erro("Erro", ex.getMessage()); }
+        });
+        blocoCad.getChildren().addAll(
+            labelDescricao("Remove clientes que não possuem nenhuma venda registrada."), btnResetClientes,
+            labelDescricao("Remove todos os fornecedores cadastrados."), btnResetForn
+        );
+
+        // ---- BLOCO: Usuários (consulta) ----
+        VBox blocoUsuarios = criarBlocoManutencao("👤 Usuários", "#495057");
+        Button btnVerUsuarios = criarBtnAcao("👁️ Ver Usuários da Loja", "#495057");
+        Label lblUsuarios = new Label("");
+        lblUsuarios.setStyle("-fx-text-fill: #adb5bd; -fx-font-size: 12px;");
+        lblUsuarios.setWrapText(true);
+        btnVerUsuarios.setOnAction(e -> {
+            Loja loja = cbLoja.getValue();
+            if (loja == null) { Alerta.aviso("Atenção", "Selecione uma loja."); return; }
+            try (java.sql.Connection conn = com.erp.config.DatabaseConfig.getConexao();
+                 java.sql.PreparedStatement ps = conn.prepareStatement("SELECT id, nome, login, perfil, ativo FROM usuarios WHERE loja_id=? ORDER BY nome")) {
+                ps.setInt(1, loja.getId());
+                java.sql.ResultSet rs = ps.executeQuery();
+                StringBuilder sb = new StringBuilder();
+                while (rs.next()) sb.append(String.format("[%d] %s (%s) — %s — %s\n", rs.getInt("id"), rs.getString("nome"), rs.getString("login"), rs.getString("perfil"), rs.getBoolean("ativo") ? "✅ Ativo" : "❌ Inativo"));
+                lblUsuarios.setText(sb.length() > 0 ? sb.toString() : "Nenhum usuário encontrado.");
+            } catch (Exception ex) { lblUsuarios.setText("Erro: " + ex.getMessage()); }
+        });
+        blocoUsuarios.getChildren().addAll(labelDescricao("Lista todos os usuários vinculados à loja selecionada."), btnVerUsuarios, lblUsuarios);
+
+        // ---- BLOCO: Reset Total ----
+        VBox blocoWipe = criarBlocoManutencao("💥 Reset Total da Loja", "#c92a2a");
+        Button btnWipe = criarBtnAcao("💥 RESET TOTAL — Apagar TUDO Operacional", "#7b1010");
+        btnWipe.setStyle(btnWipe.getStyle() + " -fx-border-color: #ff6b6b; -fx-border-width: 2;");
+        btnWipe.setOnAction(e -> {
+            Loja loja = cbLoja.getValue();
+            if (loja == null) { Alerta.aviso("Atenção", "Selecione uma loja."); return; }
+            if (!Alerta.confirmar("💥 RESET TOTAL", "⚠️ ATENÇÃO!\n\nApaga TUDO da loja:\n  • Vendas + itens + caixa\n  • Histórico de estoque\n  • Saldos zerados\n  • Financeiro\n\nLoja: \"" + loja.getNome() + "\"\nTem certeza?")) return;
+            if (!Alerta.confirmar("💥 SEGUNDA CONFIRMAÇÃO", "ÚLTIMA CHANCE de cancelar.\n\nLoja: \"" + loja.getNome() + "\"")) return;
+            javafx.scene.control.TextInputDialog dlg3 = new javafx.scene.control.TextInputDialog();
+            dlg3.setTitle("Confirmação Final");
+            dlg3.setHeaderText("Digite:  RESET TOTAL");
+            dlg3.setContentText("Texto:");
+            try { dlg3.getDialogPane().getStylesheets().add(getClass().getResource("/css/style.css").toExternalForm()); } catch (Exception ignored) {}
+            java.util.Optional<String> r3 = dlg3.showAndWait();
+            if (r3.isEmpty() || !r3.get().trim().equals("RESET TOTAL")) { Alerta.aviso("Cancelado", "Texto incorreto. Operação cancelada."); return; }
+            try (java.sql.Connection conn = com.erp.config.DatabaseConfig.getConexao()) {
+                conn.setAutoCommit(false);
+                try {
+                    execSql(conn, "DELETE FROM itens_venda WHERE venda_id IN (SELECT id FROM vendas WHERE loja_id=?)", loja.getId());
+                    try { execSql(conn, "DELETE FROM vendas_canceladas WHERE loja_id=?", loja.getId()); } catch (Exception ignored) {}
+                    execSql(conn, "DELETE FROM vendas WHERE loja_id=?", loja.getId());
+                    try { execSql(conn, "DELETE FROM sessoes_caixa WHERE loja_id=?", loja.getId()); } catch (Exception ignored) {}
+                    try { execSql(conn, "DELETE FROM movimentacoes_estoque WHERE loja_id=?", loja.getId()); } catch (Exception ignored) {}
+                    try { execSql(conn, "UPDATE produtos SET estoque_atual=0 WHERE loja_id=?", loja.getId()); } catch (Exception ignored) {}
+                    try { execSql(conn, "DELETE FROM contas_pagar WHERE loja_id=?", loja.getId()); } catch (Exception ignored) {}
+                    try { execSql(conn, "DELETE FROM contas_receber WHERE loja_id=?", loja.getId()); } catch (Exception ignored) {}
+                    conn.commit();
+                    javafx.application.Platform.runLater(() -> { Alerta.info("✅ Reset Total Concluído", "Todos os dados operacionais foram apagados.\nProdutos e usuários preservados."); atualizarStats.run(); });
+                } catch (Exception ex) { conn.rollback(); Alerta.erro("Erro", ex.getMessage()); }
+            } catch (Exception ex) { Alerta.erro("Erro", ex.getMessage()); }
+        });
+        blocoWipe.getChildren().addAll(labelDescricao("Apaga vendas, caixa, financeiro, histórico e zera estoques. Produtos e usuários são preservados."), btnWipe);
+
+        // ---- BLOCO: Código de Cancelamento ----
+        VBox blocoCodigo = criarBlocoManutencao("🔑 Código de Cancelamento do PDV", "#2b8a3e");
+        Label lblCodigoAtual = new Label("Carregando...");
+        lblCodigoAtual.setStyle("-fx-text-fill: #40c057; -fx-font-size: 13px; -fx-font-weight: bold;");
+        Button btnCarregarCodigo = criarBtnAcao("🔄 Ver Código Atual", "#2b8a3e");
+        TextField txtNovoCodigo = new TextField();
+        txtNovoCodigo.setPromptText("Novo código (ex: 53332)");
+        txtNovoCodigo.setMaxWidth(200);
+        Button btnSalvarCodigo = criarBtnAcao("💾 Salvar Código", "#2b8a3e");
+        btnCarregarCodigo.setOnAction(e -> {
+            String codigo = new com.erp.dao.ConfiguracaoDAO().get("codigo_cancelamento", "53332");
+            lblCodigoAtual.setText("Código atual: " + codigo);
+        });
+        btnSalvarCodigo.setOnAction(e -> {
+            String novo = txtNovoCodigo.getText().trim();
+            if (novo.isBlank()) { Alerta.aviso("Atenção", "Informe o novo código."); return; }
+            if (novo.length() < 4) { Alerta.aviso("Atenção", "O código deve ter ao menos 4 caracteres."); return; }
+            new com.erp.dao.ConfiguracaoDAO().set("codigo_cancelamento", novo);
+            lblCodigoAtual.setText("Código atual: " + novo);
+            txtNovoCodigo.clear();
+            Alerta.info("✅ Salvo", "Código de cancelamento atualizado para: " + novo);
+        });
+        blocoCodigo.getChildren().addAll(
+            labelDescricao("Código numérico exigido ao cancelar qualquer venda no PDV. Padrão: 53332"),
+            lblCodigoAtual,
+            new HBox(8, txtNovoCodigo, btnSalvarCodigo), btnCarregarCodigo
+        );
+
+        // Carregar código inicial
+        javafx.application.Platform.runLater(() -> {
+            String codigo = new com.erp.dao.ConfiguracaoDAO().get("codigo_cancelamento", "53332");
+            lblCodigoAtual.setText("Código atual: " + codigo);
+        });
+
+        Button btnAtualizarStats = criarBtnAcao("🔄 Atualizar Estatísticas", "#343a40");
+        btnAtualizarStats.setOnAction(ev -> atualizarStats.run());
+
+        content.getChildren().addAll(
+            lblTitulo, lblAviso, new Separator(),
+            new HBox(10, new Label("Loja:") {{ setStyle("-fx-text-fill: #dee2e6; -fx-font-weight: bold;"); }}, cbLoja, btnAtualizarStats),
+            statsBox, new Separator(),
+            blocoCodigo, new Separator(),
+            blocoVendas, blocoEstoque, blocoFin, blocoCad, blocoUsuarios, blocoWipe
+        );
+
+        scroll.setContent(content);
+        tab.setContent(scroll);
+        return tab;
+    }
+
+    private VBox criarBlocoManutencao(String titulo, String cor) {
+        Label lbl = new Label(titulo);
+        lbl.setStyle("-fx-font-size: 13px; -fx-font-weight: bold; -fx-text-fill: " + cor + ";");
+        VBox box = new VBox(8, lbl);
+        box.setStyle("-fx-background-color: #25282f; -fx-padding: 14; -fx-border-color: " + cor + "55; -fx-border-radius: 6; -fx-background-radius: 6;");
+        return box;
+    }
+
+    private Button criarBtnAcao(String texto, String cor) {
+        Button btn = new Button(texto);
+        btn.setStyle("-fx-background-color: " + cor + "; -fx-text-fill: white; -fx-font-weight: bold; -fx-padding: 8 16;");
+        return btn;
+    }
+
+    private Label labelDescricao(String texto) {
+        Label l = new Label(texto);
+        l.setStyle("-fx-text-fill: #868e96; -fx-font-size: 11px;");
+        l.setWrapText(true);
+        return l;
+    }
+
+    private void execSql(java.sql.Connection conn, String sql) throws java.sql.SQLException {
+        try (java.sql.PreparedStatement ps = conn.prepareStatement(sql)) { ps.executeUpdate(); }
+    }
+
+    private void execSql(java.sql.Connection conn, String sql, int param) throws java.sql.SQLException {
+        try (java.sql.PreparedStatement ps = conn.prepareStatement(sql)) { ps.setInt(1, param); ps.executeUpdate(); }
+    }
+
     // ==================== UTILITÁRIOS ====================
+
+    // ==================== ABA TOKENS USUÁRIO ====================
+
+    private Tab criarTabTokensUsuario() {
+        Tab tab = new Tab("👤 Tokens de Usuário");
+
+        VBox content = new VBox(12);
+        content.setPadding(new Insets(16));
+
+        Label lblInfo = new Label("Gere tokens para permitir o cadastro de novos usuários no sistema. Cada token é de uso único.");
+        lblInfo.setStyle("-fx-text-fill: #adb5bd; -fx-font-size: 12px;");
+        lblInfo.setWrapText(true);
+
+        TableView<com.erp.dao.TokenUsuarioDAO.InfoTokenUsuario> tabela = new TableView<>();
+        tabela.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
+        VBox.setVgrow(tabela, Priority.ALWAYS);
+
+        TableColumn<com.erp.dao.TokenUsuarioDAO.InfoTokenUsuario, String> colToken = new TableColumn<>("Token");
+        colToken.setCellValueFactory(d -> new javafx.beans.property.SimpleStringProperty(d.getValue().token()));
+        colToken.setPrefWidth(210);
+
+        TableColumn<com.erp.dao.TokenUsuarioDAO.InfoTokenUsuario, String> colDesc = new TableColumn<>("Descrição");
+        colDesc.setCellValueFactory(d -> new javafx.beans.property.SimpleStringProperty(d.getValue().descricao()));
+
+        TableColumn<com.erp.dao.TokenUsuarioDAO.InfoTokenUsuario, String> colTipo = new TableColumn<>("Tipo");
+        colTipo.setCellValueFactory(d -> new javafx.beans.property.SimpleStringProperty(
+                d.getValue().ilimitado() ? "♾️ Ilimitado" : "1x Uso"));
+        colTipo.setMaxWidth(100);
+
+        TableColumn<com.erp.dao.TokenUsuarioDAO.InfoTokenUsuario, String> colStatus = new TableColumn<>("Status");
+        colStatus.setCellFactory(col -> new TableCell<>() {
+            @Override protected void updateItem(String v, boolean empty) {
+                super.updateItem(v, empty);
+                if (empty || getTableRow() == null || getTableRow().getItem() == null) { setText(null); setStyle(""); return; }
+                com.erp.dao.TokenUsuarioDAO.InfoTokenUsuario t = getTableRow().getItem();
+                if (t.ilimitado() || !t.usado()) {
+                    setText(t.ilimitado() ? "♾️ Ativo" : "✅ Disponível");
+                    setStyle("-fx-text-fill: #51cf66;");
+                } else {
+                    setText("❌ Usado");
+                    setStyle("-fx-text-fill: #adb5bd;");
+                }
+            }
+        });
+        colStatus.setCellValueFactory(d -> new javafx.beans.property.SimpleStringProperty(""));
+        colStatus.setMaxWidth(100);
+
+        TableColumn<com.erp.dao.TokenUsuarioDAO.InfoTokenUsuario, String> colData = new TableColumn<>("Criado em");
+        colData.setCellValueFactory(d -> new javafx.beans.property.SimpleStringProperty(d.getValue().criadoEm()));
+
+        tabela.getColumns().addAll(colToken, colDesc, colTipo, colStatus, colData);
+
+        Button btnGerar     = new Button("➕ Gerar Token");
+        Button btnAtualizar = new Button("🔄 Atualizar");
+        Button btnLimpar    = new Button("🗑️ Limpar Usados");
+        btnGerar.setStyle("-fx-background-color: #1971c2; -fx-text-fill: white; -fx-font-weight: bold;");
+        btnLimpar.setStyle("-fx-background-color: #c92a2a; -fx-text-fill: white;");
+
+        btnGerar.setOnAction(e -> {
+            Dialog<ButtonType> dlg = new Dialog<>();
+            dlg.setTitle("Gerar Token de Usuário");
+            dlg.setHeaderText("Configure o novo token");
+            dlg.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
+            try { dlg.getDialogPane().getStylesheets().add(getClass().getResource("/css/style.css").toExternalForm()); } catch (Exception ignored) {}
+
+            GridPane grid = new GridPane();
+            grid.setHgap(10); grid.setVgap(10);
+            grid.setPadding(new Insets(16));
+
+            TextField txtDesc = new TextField();
+            txtDesc.setPromptText("Ex: Para João - Operador");
+            txtDesc.setPrefWidth(260);
+
+            Spinner<Integer> spnQtd = new Spinner<>(1, 20, 1);
+            spnQtd.setPrefWidth(80);
+
+            CheckBox chkIlimitado = new CheckBox("Token ilimitado (pode ser usado múltiplas vezes)");
+            chkIlimitado.setStyle("-fx-text-fill: #adb5bd;");
+
+            grid.addRow(0, new Label("Descrição:"), txtDesc);
+            grid.addRow(1, new Label("Quantidade:"), spnQtd);
+            grid.addRow(2, new Label(""), chkIlimitado);
+            dlg.getDialogPane().setContent(grid);
+
+            dlg.showAndWait().ifPresent(btn -> {
+                if (btn != ButtonType.OK) return;
+                int qtd = spnQtd.getValue();
+                String desc = txtDesc.getText().trim();
+                boolean ilimitado = chkIlimitado.isSelected();
+                List<String> gerados = new com.erp.dao.TokenUsuarioDAO().gerarTokens(qtd, desc, ilimitado);
+                if (gerados.isEmpty()) { Alerta.erro("Erro", "Não foi possível gerar os tokens."); return; }
+                StringBuilder sb = new StringBuilder("🔑 Tokens gerados:\n\n");
+                gerados.forEach(t -> sb.append("  ").append(t).append("\n"));
+                sb.append("\n💡 Envie este token para a pessoa que vai cadastrar o usuário.");
+                mostrarTokens(sb.toString());
+                carregarTokensUsuario(tabela);
+            });
+        });
+
+        btnAtualizar.setOnAction(e -> carregarTokensUsuario(tabela));
+        btnLimpar.setOnAction(e -> {
+            int removed = new com.erp.dao.TokenUsuarioDAO().limparUsados();
+            Alerta.info("Limpeza", removed + " token(s) usados removidos.");
+            carregarTokensUsuario(tabela);
+        });
+
+        HBox botoes = new HBox(10, btnAtualizar, btnGerar, btnLimpar);
+        botoes.setAlignment(Pos.CENTER_LEFT);
+
+        carregarTokensUsuario(tabela);
+        content.getChildren().addAll(lblInfo, botoes, tabela);
+        tab.setContent(content);
+        return tab;
+    }
+
+    private void carregarTokensUsuario(TableView<com.erp.dao.TokenUsuarioDAO.InfoTokenUsuario> tabela) {
+        new com.erp.dao.TokenUsuarioDAO().criarTabelaSeNecessario();
+        tabela.setItems(FXCollections.observableArrayList(new com.erp.dao.TokenUsuarioDAO().listarTodos()));
+    }
 
     private ColumnConstraints colConstraint(double minWidth, boolean grow) {
         ColumnConstraints cc = new ColumnConstraints();

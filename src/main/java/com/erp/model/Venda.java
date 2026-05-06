@@ -21,6 +21,7 @@ public class Venda {
     private double troco;
     private String status; // RASCUNHO, FINALIZADA, CANCELADA
     private String observacoes;
+    private boolean reembolsado;
     private List<ItemVenda> itens;
 
     public Venda() {
@@ -93,6 +94,9 @@ public class Venda {
 
     public String getObservacoes() { return observacoes; }
     public void setObservacoes(String observacoes) { this.observacoes = observacoes; }
+
+    public boolean isReembolsado() { return reembolsado; }
+    public void setReembolsado(boolean reembolsado) { this.reembolsado = reembolsado; }
 
     public List<ItemVenda> getItens() { return itens; }
     public void setItens(List<ItemVenda> itens) { this.itens = itens; recalcular(); }

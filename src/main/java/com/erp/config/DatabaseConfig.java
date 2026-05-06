@@ -85,6 +85,8 @@ public class DatabaseConfig {
         config.setMaxLifetime(1_800_000);
         config.setConnectionTestQuery("SELECT 1");
         config.setPoolName("ERP-Pool");
+        // Garante que todas as datas/horas usem o horário de Brasília (banco Neon usa UTC por padrão)
+        config.setConnectionInitSql("SET timezone='America/Sao_Paulo'");
         dataSource = new HikariDataSource(config);
         log.info("Pool de conexões criado: {}", url);
     }

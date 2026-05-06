@@ -159,23 +159,48 @@ public class NotaFiscalView {
     private void imprimirCupom(Stage stage) {
         String caminho = NotaFiscalUtil.gerar(venda);
         if (caminho == null) {
-                Alerta.erro("Erro", "Erro ao gerar o cupom fiscal.");
-                return;
+            Alerta.erro("Erro", "Erro ao gerar o cupom fiscal.");
+            return;
+        }
+
+        // Verifica impressora configurada
+        com.erp.dao.ConfiguracaoDAO cfgDao = new com.erp.dao.ConfiguracaoDAO();
+        cfgDao.criarTabelaSeNecessario();
+        String nomeImpressora = cfgDao.get(com.erp.util.ImpressoraService.CHAVE_IMPRESSORA);
+
+        if (nomeImpressora != null && !nomeImpressora.isBlank()) {
+            // Imprime direto sem dialog
+            boolean ok = com.erp.util.ImpressoraService.imprimirPDF(caminho, nomeImpressora);
+            if (ok) {
+                Alerta.info("Impressão Enviada",
+                    "✅ Cupom enviado diretamente para:\n" + nomeImpressora);
+            } else {
+                Alerta.aviso("Aviso de Impressão",
+                    "Não foi possível enviar para a impressora \"" + nomeImpressora + "\".\n\n" +
+                    "Abrindo PDF para impressão manual...");
+                abrirPDFManual(caminho);
             }
+        } else {
+            // Sem impressora configurada: abre com o visualizador padrão
+            abrirPDFManual(caminho);
+        }
+    }
+
+    private void abrirPDFManual(String caminho) {
+        try {
+            File arquivo = new File(caminho);
+            if (Desktop.isDesktopSupported()) {
+                Desktop.getDesktop().print(arquivo);
+            } else {
+                Desktop.getDesktop().open(arquivo);
+            }
+        } catch (Exception ex) {
             try {
-                File arquivo = new File(caminho);
-                if (Desktop.isDesktopSupported()) {
-                    Desktop.getDesktop().print(arquivo);
-                } else {
-                    Desktop.getDesktop().open(arquivo);
-                }
-            } catch (Exception ex) {
-                try {
-                    Desktop.getDesktop().open(new File(caminho));
-                } catch (Exception ex2) {
-                    Alerta.aviso("Aviso", "Não foi possível abrir o PDF: " + caminho);
-                }
+                Desktop.getDesktop().open(new File(caminho));
+            } catch (Exception ex2) {
+                Alerta.aviso("Aviso", "Não foi possível abrir o PDF: " + caminho);
             }
+        }
     }
 
     private void salvarCupom() {
